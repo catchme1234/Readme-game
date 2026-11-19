@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: para-game
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: node src/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

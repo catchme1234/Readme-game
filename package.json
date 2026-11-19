@@ -1,0 +1,22 @@
+{
+  "name": "para-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "local": "node --env-file-if-exists=.env scripts/local.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.11.0",
+    "express": "^5.3.0",
+    "grammy": "^1.46.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "type": "module"
+}
