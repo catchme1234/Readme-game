@@ -48,6 +48,7 @@ export async function suggestQuestions({ tone, asker, receiver, history }) {
 
   const hist = history.slice(-12).map((h) =>
     `- ${h.fromName} спросил(а): «${h.text}» [тон: ${TONES[h.tone]?.label || '—'}]` +
+    (h.why ? ` (зачем спрашивал(а): «${h.why}»)` : '') +
     (h.rating ? ` оценка: ${h.rating}` : '') +
     (h.answer ? `\n  ответ: «${h.answer.slice(0, 400)}»` : ''),
   ).join('\n') || 'Пока вопросов не было.';
@@ -62,6 +63,10 @@ ${asker.situation || '(не заполнено)'}
 <сторона_${receiver.name} конфиденциально>
 ${receiver.situation || '(не заполнено)'}
 </сторона_${receiver.name}>
+
+Посыл ${asker.name} партнёру (его видят оба): ${asker.message || '(нет)'}
+Посыл ${receiver.name} партнёру (его видят оба): ${receiver.message || '(нет)'}
+Используй посылы, чтобы вопросы помогали ${asker.name} донести то, что он(а) хочет сказать.
 
 История вопросов и ответов (ответы оба партнёра уже видели):
 ${hist}

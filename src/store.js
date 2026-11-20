@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 
 const FILE = process.env.DATA_FILE || path.resolve('data/db.json');
 
-let db = { users: {}, pairs: {}, questions: [] };
+let db = { users: {}, pairs: {}, questions: [], letters: [] };
 
 // Если задан DATABASE_URL (например, бесплатный Neon Postgres), данные живут там:
 // бесплатный хостинг стирает файлы при перезапуске. Иначе используется локальный файл.
@@ -23,6 +23,7 @@ export async function initStore() {
   } else if (fs.existsSync(FILE)) {
     db = JSON.parse(fs.readFileSync(FILE, 'utf8'));
   }
+  db.letters ??= [];
 }
 
 let saveTimer = null;
@@ -91,9 +92,10 @@ export function leavePair(uid) {
     if (p.members.length === 0) {
       delete db.pairs[p.id];
       db.questions = db.questions.filter((q) => q.pairId !== p.id);
+      db.letters = db.letters.filter((l) => l.pairId !== p.id);
     } else p.turn = p.members[0];
   }
-  if (u) { u.pairId = null; u.situation = ''; }
+  if (u) { u.pairId = null; u.situation = ''; u.message = ''; }
   save();
 }
 
@@ -118,4 +120,22 @@ export function answerQuestion(qid, answer, rating) {
   db.pairs[q.pairId].turn = q.to;
   save();
   return q;
+}
+
+// Ответ на ответ: задавший вопрос пишет партнёру пару слов о его ответе (или пропускает).
+export function replyToAnswer(qid, text) {
+  const q = db.questions.find((x) => x.id === qid);
+  q.reply = text || null;
+  q.replyDone = true;
+  save();
+  return q;
+}
+
+// Письма партнёру: короткие личные послания, видны обоим.
+export const pairLetters = (pid) => db.letters.filter((l) => l.pairId === pid);
+export function addLetter(l) {
+  const full = { id: id(), createdAt: Date.now(), ...l };
+  db.letters.push(full);
+  save();
+  return full;
 }

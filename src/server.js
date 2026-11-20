@@ -141,6 +141,8 @@ function publicQ(q, users) {
   return {
     id: q.id, from: q.from, to: q.to, fromName: users[q.from]?.name, text: q.text,
     tone: q.tone, source: q.source, answer: q.answer, rating: q.rating,
+    kind: q.kind || 'ask', why: q.why || null, edited: Boolean(q.edited),
+    reply: q.reply || null, replyDone: Boolean(q.replyDone),
     createdAt: q.createdAt, answeredAt: q.answeredAt,
   };
 }
@@ -160,7 +162,7 @@ app.get('/api/state', (req, res) => {
   const me = req.user;
   const pair = me.pairId && S.getPair(me.pairId);
   const base = {
-    me: { id: me.id, name: me.name, tone: me.tone, situation: me.situation },
+    me: { id: me.id, name: me.name, tone: me.tone, situation: me.situation, message: me.message || '' },
     aiEnabled,
   };
   if (!pair) return res.json({ ...base, pair: null });
@@ -169,6 +171,10 @@ app.get('/api/state', (req, res) => {
   const partner = partnerId && S.getUser(partnerId);
   const users = { [me.id]: me, ...(partner ? { [partner.id]: partner } : {}) };
   const open = S.openQuestion(pair.id);
+  const answered = S.pairQuestions(pair.id).filter((q) => q.answer != null);
+  // Последний ответ на мой вопрос, на который я ещё не сказал(а) пару слов.
+  const last = answered[answered.length - 1];
+  const pendingReply = last && last.from === me.id && !last.replyDone ? publicQ(last, users) : null;
   res.json({
     ...base,
     pair: {
@@ -177,16 +183,27 @@ app.get('/api/state', (req, res) => {
       myTurn: pair.turn === me.id && !open,
     },
     // Партнёр видит только имя и выбранный тон. Его «сторона» не передаётся.
-    partner: partner && { name: partner.name, tone: partner.tone, sideFilled: Boolean(partner.situation) },
+    // Посыл партнёра виден: он написан именно для второго.
+    partner: partner && { name: partner.name, tone: partner.tone, sideFilled: Boolean(partner.situation), message: partner.message || '' },
     open: open ? publicQ(open, users) : null,
-    history: S.pairQuestions(pair.id).filter((q) => q.answer != null).map((q) => publicQ(q, users)).reverse(),
+    pendingReply,
+    history: answered.map((q) => publicQ(q, users)).reverse(),
+    letters: S.pairLetters(pair.id).map((l) => ({ ...l, fromName: users[l.from]?.name })).reverse(),
     insights: { me: insights(pair.id, me.id), partner: partner ? insights(pair.id, partner.id) : null },
   });
 });
 
 app.post('/api/profile', (req, res) => {
-  const { name, tone, situation } = req.body;
+  const { name, tone, situation, message } = req.body;
   const patch = {};
+  if (typeof message === 'string') {
+    patch.message = message.trim().slice(0, 600);
+    const pair = req.user.pairId && S.getPair(req.user.pairId);
+    const partnerId = pair && S.partnerOf(pair, req.user.id);
+    if (partnerId && patch.message && patch.message !== req.user.message) {
+      notify(partnerId, `💌 ${req.user.name} оставил(а) вам посыл перед разговором. Откройте игру, чтобы прочитать.`);
+    }
+  }
   if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 40);
   if (tone in TONES) patch.tone = tone;
   if (typeof situation === 'string') patch.situation = situation.slice(0, 4000);
@@ -242,12 +259,17 @@ app.post('/api/ai/suggest', async (req, res) => {
 app.post('/api/question', (req, res) => {
   const ctx = requireTurn(req, res);
   if (!ctx) return;
-  const text = String(req.body.text || '').trim().slice(0, 500);
-  if (!text) return res.status(400).json({ error: 'Пустой вопрос' });
+  const kind = req.body.kind === 'say' ? 'say' : 'ask';
+  const text = String(req.body.text || '').trim().slice(0, 1000);
+  if (!text) return res.status(400).json({ error: kind === 'say' ? 'Напишите, что хотите сказать' : 'Пустой вопрос' });
   const tone = req.body.tone in TONES ? req.body.tone : 'gentle';
-  const source = ['own', 'library', 'ai'].includes(req.body.source) ? req.body.source : 'own';
-  const q = S.addQuestion({ pairId: ctx.pair.id, from: req.user.id, to: ctx.partner.id, text, tone, source });
-  notify(ctx.partner.id, `💌 ${req.user.name} задал(а) вам вопрос. Откройте игру, чтобы ответить.`);
+  const source = kind === 'say' ? 'own' : ['own', 'library', 'ai'].includes(req.body.source) ? req.body.source : 'own';
+  const why = String(req.body.why || '').trim().slice(0, 300) || null;
+  const edited = source !== 'own' && Boolean(req.body.edited);
+  const q = S.addQuestion({ pairId: ctx.pair.id, from: req.user.id, to: ctx.partner.id, text, tone, source, kind, why, edited });
+  notify(ctx.partner.id, kind === 'say'
+    ? `💬 ${req.user.name} хочет вам кое-что сказать. Откройте игру.`
+    : `💌 ${req.user.name} задал(а) вам вопрос. Откройте игру, чтобы ответить.`);
   res.json(q);
 });
 
@@ -255,12 +277,36 @@ app.post('/api/answer', (req, res) => {
   const pair = req.user.pairId && S.getPair(req.user.pairId);
   const open = pair && S.openQuestion(pair.id);
   if (!open || open.to !== req.user.id) return res.status(400).json({ error: 'Нет вопроса для ответа' });
-  const answer = String(req.body.answer || '').trim().slice(0, 2000);
+  let answer = String(req.body.answer || '').trim().slice(0, 2000);
+  if (!answer && open.kind === 'say') answer = '🤍 Я тебя услышал(а)';
   if (!answer) return res.status(400).json({ error: 'Напишите ответ' });
   const rating = ['love', 'like', 'meh'].includes(req.body.rating) ? req.body.rating : null;
   S.answerQuestion(open.id, answer, rating);
-  notify(open.from, `✨ ${req.user.name} ответил(а) на ваш вопрос. Теперь ход за ним/ней.`);
+  notify(open.from, `✨ ${req.user.name} ответил(а) вам. Откройте игру, чтобы прочитать.`);
   res.json({ ok: true });
+});
+
+// Ответ на ответ: пара слов партнёру после его ответа. Можно пропустить.
+app.post('/api/reply', (req, res) => {
+  const pair = req.user.pairId && S.getPair(req.user.pairId);
+  const q = pair && S.pairQuestions(pair.id).find((x) => x.id === req.body.id);
+  if (!q || q.from !== req.user.id || q.answer == null || q.replyDone) return res.status(400).json({ error: 'Нечего отвечать' });
+  const text = String(req.body.text || '').trim().slice(0, 600);
+  S.replyToAnswer(q.id, text);
+  if (text) notify(q.to, `💬 ${req.user.name} откликнулся(ась) на ваш ответ.`);
+  res.json({ ok: true });
+});
+
+// Письмо партнёру: личное послание в любой момент, например в конце разговора.
+app.post('/api/letter', (req, res) => {
+  const pair = req.user.pairId && S.getPair(req.user.pairId);
+  const partnerId = pair && S.partnerOf(pair, req.user.id);
+  if (!partnerId) return res.status(400).json({ error: 'Сначала пригласите партнёра' });
+  const text = String(req.body.text || '').trim().slice(0, 3000);
+  if (!text) return res.status(400).json({ error: 'Письмо пустое' });
+  const l = S.addLetter({ pairId: pair.id, from: req.user.id, to: partnerId, text });
+  notify(partnerId, `✉️ ${req.user.name} написал(а) вам письмо. Откройте игру, чтобы прочитать.`);
+  res.json(l);
 });
 
 try {

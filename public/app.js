@@ -11,7 +11,11 @@ let lastJson = '';
 let tab = 'game';
 let demoUser = localStorageGet('demoUser') || 'demoA';
 // Черновики живут здесь, чтобы обновления не стирали набранный текст.
-let compose = { mode: 'own', tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own' };
+const freshCompose = (mode = 'own') => ({ mode, tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own', why: '' });
+let compose = freshCompose();
+let replyDraft = '';
+let letterDraft = null;   // null — форма письма закрыта
+let msgDraft = null;
 let answer = { text: '', rating: null };
 let sideDraft = null;
 let library = { tone: null, items: [] };
@@ -38,6 +42,40 @@ function haptic(type = 'light') { try { tg?.HapticFeedback?.impactOccurred(type)
 
 const toneLabel = (t) => (config.tones[t] ? `${config.tones[t].emoji} ${config.tones[t].label}` : 'не выбран');
 const srcLabel = { own: '✍️ свой', library: '📚 из библиотеки', ai: '✨ от ИИ' };
+const srcBadge = (q) => (q.kind === 'say' ? '💬 сказал(а)' : q.edited ? '✍️ своими словами' : srcLabel[q.source]);
+const SAY_STARTERS = ['Мне важно…', 'Мне жаль, что…', 'Я ценю, что ты…', 'Я боюсь, что…', 'Я прошу…', 'Мне не хватает…'];
+
+// Посыл партнёра: его собственные слова, которые видны перед вопросами.
+function partnerMessageCard() {
+  const m = S.partner?.message;
+  if (!m) return '';
+  return `<div class="card msg"><p class="muted">💌 Посыл от ${esc(S.partner.name)}</p><div class="msgtext">${esc(m)}</div></div>`;
+}
+
+function replyCard() {
+  const q = S.pendingReply;
+  if (!q) return '';
+  return `<div class="card warm">
+    <p class="muted">${esc(S.partner.name)} ${q.kind === 'say' ? 'откликнулся(ась) на ваши слова' : 'ответил(а) на ваш вопрос'}:</p>
+    <p class="muted" style="margin-bottom:4px">«${esc(q.text)}»</p>
+    <div class="a">${esc(q.answer)}</div>
+    <h2 style="margin-top:14px">Скажите ${esc(S.partner.name)} пару слов</h2>
+    <textarea id="reply" style="min-height:70px" maxlength="600" placeholder="Например: Спасибо, что сказал(а). Я не знал(а), что тебе так тяжело.">${esc(replyDraft)}</textarea>
+    <div class="row" style="margin-top:8px"><button id="replySend">Отправить</button><button class="ghost" id="replySkip">Пропустить</button></div>
+  </div>`;
+}
+
+function bindReply() {
+  const ta = document.getElementById('reply');
+  if (!ta) return;
+  ta.oninput = () => (replyDraft = ta.value);
+  const go = async (text) => {
+    try { await api('/api/reply', { id: S.pendingReply.id, text }); replyDraft = ''; if (text) { haptic('medium'); toast('Отправлено 💬'); } refresh(true); }
+    catch (e) { toast(e.message); }
+  };
+  document.getElementById('replySend').onclick = () => { if (!replyDraft.trim()) return toast('Напишите пару слов или нажмите «Пропустить»'); go(replyDraft.trim()); };
+  document.getElementById('replySkip').onclick = () => go('');
+}
 const rateLabel = { love: '❤️ В точку', like: '👍 Хороший', meh: '👎 Не моё' };
 
 async function refresh(force = false) {
@@ -158,17 +196,25 @@ function renderGame() {
     $app.innerHTML = `
       <div class="card hero"><div class="big">⏳</div><h1>Ждём ответ ${esc(S.partner.name)}</h1>
         <p class="muted">Мы пришлём уведомление в Telegram, когда ответ придёт.</p></div>
-      <div class="card"><span class="badge">${toneLabel(o.tone)}</span><span class="badge">${srcLabel[o.source]}</span>
-        <div class="question">${esc(o.text)}</div></div>
-      ${sideHint()}`;
+      <div class="card">${o.kind === 'say' ? '<p class="muted">Вы сказали:</p>' : `<span class="badge">${toneLabel(o.tone)}</span><span class="badge">${srcBadge(o)}</span>`}
+        <div class="question">${esc(o.text)}</div>${o.why ? `<p class="muted">Зачем: ${esc(o.why)}</p>` : ''}</div>
+      ${messageHint()}${sideHint()}`;
     return;
   }
   if (!S.pair.myTurn) {
-    $app.innerHTML = `<div class="card hero"><div class="big">🤍</div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
-      <p class="muted">Скоро вам придёт вопрос.</p></div>${sideHint()}`;
+    $app.innerHTML = `${replyCard()}<div class="card hero"><div class="big">🤍</div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
+      <p class="muted">Скоро вам придёт вопрос.</p></div>${partnerMessageCard()}${messageHint()}${sideHint()}`;
+    bindReply();
     return;
   }
   renderCompose();
+}
+
+function messageHint() {
+  if (S.me.message) return '';
+  return `<div class="card warm"><h2>💌 Ваш посыл ${esc(S.partner.name)}</h2>
+    <p class="muted">Что вы хотите, чтобы ${esc(S.partner.name)} знал(а) перед разговором? Например: «Я не хочу ругаться. Я скучаю по нам». Это увидит ${esc(S.partner.name)}.</p>
+    <button data-go="side">Написать посыл</button></div>`;
 }
 
 function sideHint() {
@@ -183,25 +229,34 @@ function renderCompose() {
   const tones = Object.entries(config.tones);
   const m = compose.mode;
   $app.innerHTML = `
+    ${partnerMessageCard()}
     <div class="card">
       <h1>Ваш ход ✨</h1>
-      <p class="muted">Задайте ${esc(S.partner.name)} один вопрос. ${S.partner.tone ? `${esc(S.partner.name)} предпочитает тон ${toneLabel(S.partner.tone)}.` : ''}</p>
+      <p class="muted">${m === 'say' ? `Скажите ${esc(S.partner.name)} что-то своё, без вопроса.` : `Задайте ${esc(S.partner.name)} один вопрос.`} ${m !== 'say' && S.partner.tone ? `${esc(S.partner.name)} предпочитает тон ${toneLabel(S.partner.tone)}.` : ''}</p>
       <div class="modes">
         <button data-mode="own" class="${m === 'own' ? 'on' : ''}"><span>✍️</span>Свой</button>
+        <button data-mode="say" class="${m === 'say' ? 'on' : ''}"><span>💬</span>Сказать</button>
         <button data-mode="library" class="${m === 'library' ? 'on' : ''}"><span>📚</span>Библиотека</button>
         <button data-mode="ai" class="${m === 'ai' ? 'on' : ''}"><span>✨</span>ИИ</button>
       </div>
-      ${m !== 'own' ? `<div class="chips">${tones.map(([k, t]) => `<button class="chip ${compose.tone === k ? 'on' : ''}" data-ctone="${k}">${t.emoji} ${t.label}</button>`).join('')}</div>` : ''}
+      ${m === 'library' || m === 'ai' ? `<div class="chips">${tones.map(([k, t]) => `<button class="chip ${compose.tone === k ? 'on' : ''}" data-ctone="${k}">${t.emoji} ${t.label}</button>`).join('')}</div>` : ''}
       <div id="pane"></div>
     </div>
-    ${sideHint()}`;
+    ${messageHint()}${sideHint()}`;
   const pane = document.getElementById('pane');
 
   if (m === 'own') {
     pane.innerHTML = `
       <textarea id="qtext" placeholder="Например: Что тебе было бы важно услышать от меня сейчас?">${esc(compose.text)}</textarea>
       <div class="chips">${tones.map(([k, t]) => `<button class="chip ${compose.tone === k ? 'on' : ''}" data-ctone="${k}">${t.emoji} ${t.label}</button>`).join('')}</div>
+      ${whyField()}
       <button id="send">Отправить вопрос</button>`;
+  } else if (m === 'say') {
+    pane.innerHTML = `
+      <p class="muted">Начните с заготовки, а дальше своими словами:</p>
+      <div class="chips">${SAY_STARTERS.map((t, i) => `<button class="chip" data-starter="${i}">${esc(t)}</button>`).join('')}</div>
+      <textarea id="qtext" maxlength="1000" placeholder="Например: Мне важно знать заранее, если ты задерживаешься, потому что я жду тебя весь вечер.">${esc(compose.text)}</textarea>
+      <button id="send" style="margin-top:10px">Сказать ${esc(S.partner.name)}</button>`;
   } else if (m === 'library') {
     if (library.tone !== compose.tone) { loadLibrary(); pane.innerHTML = '<p class="muted">Загрузка…</p>'; }
     else pane.innerHTML = `<div class="qlist">${library.items.map((q, i) =>
@@ -220,8 +275,14 @@ function renderCompose() {
 
 function pickedEditor() {
   if (!compose.picked) return '';
-  return `<p class="muted" style="margin-top:8px">Можно поправить своими словами:</p>
-    <textarea id="qtext">${esc(compose.text)}</textarea><button id="send">Отправить вопрос</button>`;
+  return `<p class="muted" style="margin-top:8px">Это черновик. Скажите по-своему, так вопрос станет вашим:</p>
+    <textarea id="qtext">${esc(compose.text)}</textarea>${whyField()}<button id="send">Отправить вопрос</button>`;
+}
+
+// «Зачем я спрашиваю»: одна строка от себя, партнёр читает её над вопросом.
+function whyField() {
+  return `<div class="why"><label for="qwhy">Зачем я спрашиваю <span class="muted">(увидит ${esc(S.partner.name)}, можно пропустить)</span></label>
+    <input id="qwhy" maxlength="300" placeholder="Например: хочу понять тебя, а не спорить" value="${esc(compose.why)}" /></div>`;
 }
 
 async function loadLibrary() {
@@ -234,7 +295,7 @@ async function loadLibrary() {
 function bindCompose() {
   $app.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => {
     compose.mode = b.dataset.mode; compose.picked = null;
-    if (compose.mode === 'own') compose.text = '';
+    if (compose.mode === 'own' || compose.mode === 'say') compose.text = '';
     renderCompose();
   }));
   $app.querySelectorAll('[data-ctone]').forEach((b) => (b.onclick = () => {
@@ -249,6 +310,14 @@ function bindCompose() {
   }));
   const ta = document.getElementById('qtext');
   if (ta) ta.oninput = () => (compose.text = ta.value);
+  const why = document.getElementById('qwhy');
+  if (why) why.oninput = () => (compose.why = why.value);
+  $app.querySelectorAll('[data-starter]').forEach((b) => (b.onclick = () => {
+    const st = SAY_STARTERS[b.dataset.starter].replace('…', ' ');
+    compose.text = compose.text.trim() ? `${compose.text.trim()} ${st}` : st;
+    renderCompose();
+    const t = document.getElementById('qtext'); t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+  }));
   const gen = document.getElementById('gen');
   if (gen) gen.onclick = async () => {
     compose.loading = true; compose.picked = null; renderCompose();
@@ -260,23 +329,28 @@ function bindCompose() {
   };
   const send = document.getElementById('send');
   if (send) send.onclick = async () => {
-    const source = compose.mode === 'own' ? 'own' : compose.mode === 'library' ? 'library' : compose.source;
+    const m = compose.mode;
+    const source = m === 'own' || m === 'say' ? 'own' : m === 'library' ? 'library' : compose.source;
+    const edited = Boolean(compose.picked) && compose.text.trim() !== compose.picked.trim();
     try {
       send.disabled = true;
-      await api('/api/question', { text: compose.text, tone: compose.tone, source });
-      haptic('medium'); toast('Вопрос отправлен 💌');
-      compose = { mode: compose.mode, tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own' };
+      await api('/api/question', { kind: m === 'say' ? 'say' : 'ask', text: compose.text, tone: compose.tone, source, why: compose.why, edited });
+      haptic('medium'); toast(m === 'say' ? 'Отправлено 💬' : 'Вопрос отправлен 💌');
+      compose = freshCompose(m === 'say' ? 'own' : m);
       refresh(true);
     } catch (e) { toast(e.message); send.disabled = false; }
   };
 }
 
 function renderAnswer(o) {
+  if (o.kind === 'say') return renderHear(o);
   $app.innerHTML = `
+    ${partnerMessageCard()}
+    ${o.why ? `<div class="card warm"><p class="muted">${esc(o.fromName)} спрашивает, потому что:</p><div class="msgtext">${esc(o.why)}</div></div>` : ''}
     <div class="card">
       <p class="muted">${esc(o.fromName)} спрашивает:</p>
       <div class="question">${esc(o.text)}</div>
-      <span class="badge">${toneLabel(o.tone)}</span><span class="badge">${srcLabel[o.source]}</span>
+      <span class="badge">${toneLabel(o.tone)}</span><span class="badge">${srcBadge(o)}</span>
     </div>
     <div class="card">
       <h2>Ваш ответ</h2>
@@ -297,8 +371,39 @@ function renderAnswer(o) {
   };
 }
 
-function renderSide() {
+// Партнёр не спросил, а сказал что-то своё: можно ответить или просто дать понять, что услышал(а).
+function renderHear(o) {
   $app.innerHTML = `
+    <div class="card warm">
+      <p class="muted">${esc(o.fromName)} хочет вам сказать:</p>
+      <div class="question">${esc(o.text)}</div>
+    </div>
+    <div class="card">
+      <h2>Ваш отклик</h2>
+      <textarea id="atext" placeholder="Ответьте своими словами, если хочется">${esc(answer.text)}</textarea>
+      <button id="send" style="margin-top:10px">Ответить</button>
+      <button class="ghost" id="heard">🤍 Я тебя услышал(а)</button>
+    </div>`;
+  const ta = document.getElementById('atext');
+  ta.oninput = () => (answer.text = ta.value);
+  const go = async (text) => {
+    try { await api('/api/answer', { answer: text }); answer = { text: '', rating: null }; haptic('medium'); toast('Отправлено. Теперь ваш ход ✨'); refresh(true); }
+    catch (e) { toast(e.message); }
+  };
+  document.getElementById('send').onclick = () => { if (!answer.text.trim()) return toast('Напишите пару слов или нажмите «Я тебя услышал(а)»'); go(answer.text); };
+  document.getElementById('heard').onclick = () => go('');
+}
+
+function renderSide() {
+  if (msgDraft === null) msgDraft = S.me.message || '';
+  $app.innerHTML = `
+    <div class="card warm">
+      <h1>💌 Мой посыл ${esc(S.partner.name)}</h1>
+      <p class="muted">Что вы хотите, чтобы ${esc(S.partner.name)} знал(а) перед разговором и во время него. Это <b>увидит ${esc(S.partner.name)}</b>, над каждым вашим вопросом.</p>
+      <textarea id="msg" style="min-height:90px" maxlength="600" placeholder="Например: Я не хочу ругаться. Я скучаю по нашим вечерам и хочу понять тебя.">${esc(msgDraft)}</textarea>
+      <button id="saveMsg" style="margin-top:10px">${S.me.message ? 'Обновить посыл' : 'Отправить посыл'}</button>
+    </div>
+    ${partnerMessageCard()}
     <div class="card">
       <h1>🔒 Моя сторона</h1>
       <div class="private"><span>👁️</span><span>Этот текст видит <b>только ИИ-помощник</b>. ${esc(S.partner.name)} его не увидит, и ИИ не будет его пересказывать.</span></div>
@@ -310,20 +415,55 @@ function renderSide() {
     <div class="card"><p class="muted">${esc(S.partner.name)} ${S.partner.sideFilled ? 'уже рассказал(а) свою сторону.' : 'пока не рассказал(а) свою сторону.'}</p></div>`;
   const ta = document.getElementById('side');
   ta.oninput = () => (sideDraft = ta.value);
+  const mt = document.getElementById('msg');
+  mt.oninput = () => (msgDraft = mt.value);
+  document.getElementById('saveMsg').onclick = async () => {
+    await api('/api/profile', { message: msgDraft }); haptic('medium');
+    toast(msgDraft.trim() ? `Посыл отправлен ${S.partner.name} 💌` : 'Посыл удалён'); refresh(true);
+  };
   document.getElementById('save').onclick = async () => { await api('/api/profile', { situation: sideDraft }); toast('Сохранено 🔒'); refresh(true); };
   const clear = document.getElementById('clear');
   if (clear) clear.onclick = async () => { sideDraft = ''; await api('/api/profile', { situation: '' }); refresh(true); };
 }
 
 function renderHistory() {
-  const h = S.history;
-  $app.innerHTML = `<h1 style="padding:0 4px 8px">📖 История</h1>` + (h.length ? h.map((q) => `
+  const who = (id) => (id === S.me.id ? 'Вы' : esc(S.partner.name));
+  const date = (t) => new Date(t).toLocaleDateString('ru-RU');
+  const items = [
+    ...S.history.map((q) => ({ t: q.answeredAt || q.createdAt, html: `
     <div class="card hist">
-      <p class="muted">${esc(q.fromName)} → ${q.from === S.me.id ? esc(S.partner.name) : 'вам'} · ${new Date(q.createdAt).toLocaleDateString('ru-RU')}</p>
+      <p class="muted">${who(q.from)} ${q.kind === 'say' ? 'сказали' : 'спросили'} · ${date(q.createdAt)}</p>
+      ${q.why ? `<p class="muted">Зачем: ${esc(q.why)}</p>` : ''}
       <b>${esc(q.text)}</b>
-      <div class="a">${esc(q.answer)}</div>
-      <p style="margin-top:8px"><span class="badge">${toneLabel(q.tone)}</span><span class="badge">${srcLabel[q.source]}</span>${q.rating ? `<span class="badge">${rateLabel[q.rating]}</span>` : ''}</p>
-    </div>`).join('') : '<div class="card center muted">Здесь появятся ваши вопросы и ответы.</div>');
+      <div class="a"><span class="muted">${who(q.to)}:</span> ${esc(q.answer)}</div>
+      ${q.reply ? `<div class="a r"><span class="muted">${who(q.from)}:</span> ${esc(q.reply)}</div>` : ''}
+      <p style="margin-top:8px">${q.kind === 'say' ? '' : `<span class="badge">${toneLabel(q.tone)}</span>`}<span class="badge">${srcBadge(q)}</span>${q.rating ? `<span class="badge">${rateLabel[q.rating]}</span>` : ''}</p>
+    </div>` })),
+    ...(S.letters || []).map((l) => ({ t: l.createdAt, html: `
+    <div class="card warm letter">
+      <p class="muted">✉️ Письмо: ${who(l.from)} → ${l.to === S.me.id ? 'вам' : esc(S.partner.name)} · ${date(l.createdAt)}</p>
+      <div class="msgtext">${esc(l.text)}</div>
+    </div>` })),
+  ].sort((a, b) => b.t - a.t);
+  $app.innerHTML = `<h1 style="padding:0 4px 8px">📖 История</h1>
+    <div class="card warm">
+      ${letterDraft === null
+        ? `<h2>✉️ Письмо ${esc(S.partner.name)}</h2><p class="muted">Короткое письмо своими словами. Например, в конце разговора: что вы услышали и что чувствуете сейчас.</p><button id="letterOpen">Написать письмо</button>`
+        : `<h2>✉️ Письмо ${esc(S.partner.name)}</h2>
+           <textarea id="letter" maxlength="3000" style="min-height:140px" placeholder="Сегодня я услышал(а), что… Мне важно, чтобы ты знал(а)…">${esc(letterDraft)}</textarea>
+           <div class="row" style="margin-top:8px"><button id="letterSend">Отправить</button><button class="ghost" id="letterCancel">Отмена</button></div>`}
+    </div>` + (items.length ? items.map((x) => x.html).join('') : '<div class="card center muted">Здесь появятся ваши вопросы, ответы и письма.</div>');
+  const open = document.getElementById('letterOpen');
+  if (open) open.onclick = () => { letterDraft = ''; renderHistory(); document.getElementById('letter').focus(); };
+  const ta = document.getElementById('letter');
+  if (ta) {
+    ta.oninput = () => (letterDraft = ta.value);
+    document.getElementById('letterCancel').onclick = () => { letterDraft = null; renderHistory(); };
+    document.getElementById('letterSend').onclick = async () => {
+      try { await api('/api/letter', { text: letterDraft }); letterDraft = null; haptic('medium'); toast('Письмо отправлено ✉️'); refresh(true); }
+      catch (e) { toast(e.message); }
+    };
+  }
 }
 
 // ---------- Навигация ----------
@@ -345,8 +485,8 @@ $app.addEventListener('click', (e) => {
     bar.onclick = (e) => {
       const b = e.target.closest('[data-demo]'); if (!b) return;
       demoUser = b.dataset.demo; localStorageSet('demoUser', demoUser); mark();
-      compose = { mode: 'own', tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own' };
-      answer = { text: '', rating: null }; sideDraft = null; library = { tone: null, items: [] }; tab = 'game';
+      compose = freshCompose();
+      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game';
       refresh(true);
     };
   }
