@@ -40,13 +40,7 @@ if (BOT_TOKEN) {
   bot.catch((e) => console.error('Bot error:', e.message));
   bot.init().then(async () => {
     botUsername = bot.botInfo.username;
-    // На своём сервере без домена адрес даёт туннель Cloudflare (см. deploy/).
-    if (process.env.TUNNEL_METRICS && !process.env.WEBAPP_URL) WEBAPP_URL = await tunnelUrl(process.env.TUNNEL_METRICS);
-    // Кнопка «Играть» слева от поля ввода в чате с ботом.
-    if (WEBAPP_URL.startsWith('https://')) {
-      bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Играть', web_app: { url: WEBAPP_URL } } })
-        .catch((e) => console.error('menu button:', e.message));
-    }
+    // Сначала запускаем бота, чтобы он отвечал сразу, а адрес туннеля подхватываем потом.
     if (USE_WEBHOOK) {
       await bot.api.setWebhook(`${WEBAPP_URL}/tg/${HOOK_SECRET}`, { secret_token: HOOK_SECRET });
       console.log(`Бот @${botUsername} запущен (вебхук)`);
@@ -55,7 +49,16 @@ if (BOT_TOKEN) {
       bot.start();
       console.log(`Бот @${botUsername} запущен`);
     }
-  });
+    // На своём сервере без домена адрес даёт туннель Cloudflare (см. deploy/).
+    if (process.env.TUNNEL_METRICS && !process.env.WEBAPP_URL) WEBAPP_URL = await tunnelUrl(process.env.TUNNEL_METRICS);
+    // Кнопка «Играть» слева от поля ввода в чате с ботом.
+    if (WEBAPP_URL.startsWith('https://')) {
+      bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Играть', web_app: { url: WEBAPP_URL } } })
+        .catch((e) => console.error('menu button:', e.message));
+    }
+  }).catch((e) => console.error('ОШИБКА запуска бота (проверьте BOT_TOKEN):', e.message));
+} else {
+  console.error('BOT_TOKEN не задан: бот в Telegram не запущен, работает только демо-режим.');
 }
 
 async function tunnelUrl(metrics) {
@@ -260,7 +263,13 @@ app.post('/api/answer', (req, res) => {
   res.json({ ok: true });
 });
 
-await S.initStore();
+try {
+  await S.initStore();
+} catch (e) {
+  console.error('ОШИБКА подключения к базе (проверьте DATABASE_URL):', e.message);
+  delete process.env.DATABASE_URL;
+  await S.initStore();
+}
 app.listen(PORT, () => {
   console.log(`Мини-приложение: http://localhost:${PORT}  (демо-режим: ${DEMO ? 'да' : 'нет'}, ИИ: ${aiEnabled ? 'Claude' : 'библиотека'})`);
 });
