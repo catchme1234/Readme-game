@@ -108,7 +108,7 @@ function renderSummary() {
         <p class="muted">Итог откроется, когда ${esc(S.partner.name)} тоже напишет, что услышал(а).</p></div>
       <button class="ghost" data-summaryclose>Вернуться к вопросам</button>` : `
     <div class="card">
-      <h2>Что я услышал(а) от ${esc(S.partner.name)}</h2>
+      <h2>Что я услышал(а)</h2>
       <p class="muted">Одной-двумя фразами, своими словами. ${esc(S.partner.name)} увидит это, когда тоже напишет.</p>
       <textarea id="heard" maxlength="1000" placeholder="Я услышал(а), что тебе…">${esc(summary.heard)}</textarea>
       <h2 style="margin-top:14px">Наш маленький шаг</h2>
@@ -133,6 +133,59 @@ function renderSummary() {
   }
 }
 let showSummary = false;
+// Главная: две кнопки. 'home' — главная, 'talk' — разговор, 'signal' — знаки партнёру.
+let view = 'home';
+
+const ICON = {
+  sign: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5s-7-4.3-7-9.3A3.8 3.8 0 0 1 12 8a3.8 3.8 0 0 1 7 2.2c0 5-7 9.3-7 9.3z"/></svg>',
+  talk: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5C4 5.1 5.1 4 6.5 4h7C14.9 4 16 5.1 16 6.5v4c0 1.4-1.1 2.5-2.5 2.5H9l-3.5 3v-3H6.5C5.1 13 4 11.9 4 10.5z"/><path d="M18 9h.5c.8 0 1.5.7 1.5 1.5v4c0 .8-.7 1.5-1.5 1.5H18v2.5L15 16h-3"/></svg>',
+};
+
+function goTalk() { view = 'talk'; sigForm = null; }
+
+// Что ждёт ответа: показываем на главной, чтобы ничего не потерялось.
+function waitingCards() {
+  const o = S.open;
+  const out = [];
+  if (S.talk && S.talk.partnerHeard && !S.talk.heardMine) out.push(`<div class="card talk"><b>🌿 ${esc(S.partner.name)} подводит итог разговора</b><p class="muted" style="margin:6px 0 10px">Напишите и вы, что услышали, чтобы увидеть итог.</p><button data-gotalk>Открыть</button></div>`);
+  if (o && o.kind === 'together' && !o.answeredBy.includes(S.me.id)) out.push(`<div class="card warm"><b>📖 Вопрос для вас обоих</b><p class="question" style="font-size:17px;margin:8px 0">${esc(o.text)}</p><button data-gotalk>Ответить</button></div>`);
+  else if (o && o.to === S.me.id && o.kind !== 'together') out.push(`<div class="card warm"><b>${o.kind === 'say' ? `💬 ${esc(S.partner.name)} хочет вам что-то сказать` : `💌 ${esc(S.partner.name)} задал(а) вам вопрос`}</b><p class="question" style="font-size:17px;margin:8px 0">${esc(o.text)}</p><button data-gotalk>${o.kind === 'say' ? 'Прочитать' : 'Ответить'}</button></div>`);
+  return out.join('');
+}
+
+function renderHome() {
+  const t = S.talk;
+  const talkNote = t ? `Идёт разговор: ${esc(config.topics[t.topic])}, ступень ${t.stage} из 5`
+    : S.open && S.open.from === S.me.id ? `Ждём ответа ${esc(S.partner.name)}`
+    : S.pair.myTurn ? 'Задать вопрос или сказать своё, по очереди' : `Сейчас очередь ${esc(S.partner.name)}`;
+  $app.innerHTML = `
+    ${pauseAskCard()}${incomingSignals()}${waitingCards()}${replyCard()}${stepCard()}${ideasCard()}${lastTalkCard()}
+    <div class="home">
+      <p class="eyebrow">Когда чуть остыли</p>
+      <h1>Как вы сейчас?</h1>
+      <p class="lead">Можно просто дать знак, без слов. А когда будете готовы, поговорить по шагам.</p>
+      <button class="big-choice" data-gosign>
+        <span class="ic">${ICON.sign}</span>
+        <span><b>Дать знак</b><small>Одна кнопка: «мне нужно остыть», «давай помиримся», «скучаю»</small></span>
+      </button>
+      <button class="big-choice" data-gotalk>
+        <span class="ic">${ICON.talk}</span>
+        <span><b>Поговорить</b><small>${talkNote}</small></span>
+      </button>
+    </div>
+    ${mySignals()}`;
+  bindReply();
+  bindSignalInputs();
+}
+
+function renderSignalView() {
+  $app.innerHTML = `<button class="back" data-gohome>← Назад</button>
+    <h1 style="margin-top:6px">Дать знак</h1>
+    <p class="lead" style="margin-bottom:14px">${esc(S.partner.name)} получит сообщение в Telegram и сможет ответить одной кнопкой.</p>
+    ${signalPanel().replace('<h2>Быстрый знак партнёру</h2>', '').replace(/<p class="muted">Одна кнопка, и[^<]*<\/p>/, '')}
+    ${mySignals()}`;
+  bindSignalInputs();
+}
 let answer = { text: '', rating: null };
 let sideDraft = null;
 let library = { tone: null, items: [] };
@@ -168,7 +221,7 @@ const SAY_STARTERS = ['Мне важно…', 'Мне жаль, что…', 'Я 
 function partnerMessageCard() {
   const m = S.partner?.message;
   if (!m) return '';
-  return `<div class="card msg"><p class="muted">💌 Посыл от ${esc(S.partner.name)}</p><div class="msgtext">${esc(m)}</div></div>`;
+  return `<div class="card msg"><p class="muted">💌 ${esc(S.partner.name)} хочет, чтобы вы знали</p><div class="msgtext">${esc(m)}</div></div>`;
 }
 
 function replyCard() {
@@ -220,23 +273,26 @@ function render() {
   const dot = document.querySelector('#tabs [data-tab="daily"]');
   if (dot) dot.classList.toggle('dot', Boolean(S.daily && S.daily.mine == null));
   if (S.me.safety) return renderSafety();
-  const note = document.getElementById('brand-note');
-  if (note) note.textContent = !S.pair || !S.partner ? 'прочитай меня' : ({ game: 'ваш разговор', daily: 'страница дня', side: 'мои слова', tone: 'что откликается', history: 'наша книга' }[tab] || '');
   if (solo && tab === 'game') return renderSolo();
+  if (tab === 'game' && sigForm) view = 'signal';
+  if (tab === 'game' && (view === 'home' || (view === 'signal' && false))) return renderHome();
+  if (tab === 'game' && view === 'signal') return renderSignalView();
   ({ game: renderGame, daily: renderDaily, side: renderSide, tone: () => renderTonePick(false), history: renderHistory }[tab])();
   if (tab === 'game') decorateGame();
-  if (tab === 'tone') { $app.insertAdjacentHTML('afterbegin', makeupCard(false)); bindSignalInputs(); }
+  if (tab === 'tone') $app.insertAdjacentHTML('afterbegin', '<button class="back" data-go="side">← Мои слова</button>');
 }
 
 function renderStart() {
   const join = new URLSearchParams(location.search).get('join') || '';
   $app.innerHTML = `
     <div class="welcome">
-      <p class="eyebrow">Две страницы одной книги</p>
+      <p class="eyebrow">Для момента, когда чуть остыли</p>
       <img class="art" src="brand/artwork.jpg" alt="Раскрытая книга со светом между страниц" />
       <h1>Начать разговор<br>можно мягко.</h1>
-      <p class="lead"><b>Прочитай меня, а я тебя.</b> Когда поссорились и слова не находятся, ReadMe помогает начать с малого: дать знак одной кнопкой, остыть и поговорить по шагам, задавая друг другу вопросы по очереди.</p>
-      <p class="muted">ИИ здесь не судья и не решает, кто прав. Говорите вы, своими словами.</p>
+      <p class="lead"><b>Прочитай меня, а я тебя.</b> Самая острая ссора позади, но слова ещё не находятся. ReadMe помогает начать с малого: дать знак одной кнопкой, а потом поговорить по шагам, задавая друг другу вопросы по очереди.</p>
+      ${join ? `<div class="card warm invite"><b>Вас пригласили в ReadMe</b>
+        <p style="margin:8px 0 0">Здесь никто не судит и не решает, кто прав. Вы отвечаете на вопросы своими словами, и ваш ответ закрыт, пока не ответите оба. Остановиться можно в любой момент.</p></div>` : ''}
+      <p class="muted">ИИ-помощник подсказывает вопросы. Он читает только то, что вы сами ему напишете в «Моей стороне», и не пересказывает это партнёру.</p>
     </div>
     <div class="card">
       <h2>Как вас зовут?</h2>
@@ -260,8 +316,8 @@ function renderStart() {
 function renderInvite() {
   const link = S.pair.invite;
   $app.innerHTML = `
-    <div class="card hero"><div class="big">💌</div><h1>Пригласите партнёра</h1>
-      <p class="muted">Игра начнётся, когда вы оба будете в паре.</p></div>
+    <div class="card hero"><p class="eyebrow">Мягкое приглашение</p><h1>Позовите партнёра</h1>
+      <p class="lead">Лучше отправить, когда вы оба чуть остыли. Мы приложим к ссылке короткое объяснение: что это, что никто не судит и что ответы закрыты, пока не ответите оба.</p></div>
     <div class="card">
       <h2>Код пары</h2>
       <div class="code">${esc(S.pair.code)}</div>
@@ -269,7 +325,7 @@ function renderInvite() {
       <button class="ghost" id="copy">Скопировать ${link ? 'ссылку' : 'код'}</button>
     </div>
     <div class="card"><button class="ghost" id="leave">Отменить пару</button></div>`;
-  const text = 'Мне важно, чтобы мы умели слышать друг друга. Прочитай меня, а я тебя: давай попробуем ReadMe 📖';
+  const text = 'Мне важно, чтобы мы слышали друг друга, даже после ссоры. Это ReadMe: здесь никто не судит, мы по очереди задаём друг другу вопросы, и ответы открываются, только когда ответили оба. Попробуешь со мной?';
   if (link) document.getElementById('share').onclick = () =>
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
   document.getElementById('copy').onclick = () => { navigator.clipboard?.writeText(link || S.pair.code); toast('Скопировано'); };
@@ -362,8 +418,8 @@ function renderDaily() {
     <textarea id="dtext" maxlength="1000" placeholder="Ваш ответ">${esc(dailyDraft)}</textarea>
     <button id="dsend" class="${d.partnerAnswered ? 'coral' : ''}" style="margin-top:10px">${d.partnerAnswered ? 'Ответить и открыть' : 'Ответить'}</button>`;
   const streak = d.streak
-    ? `<div class="streak"><span>🔥 ${d.streak}</span> ${plural(d.streak, 'день', 'дня', 'дней')} подряд вы отвечаете вместе</div>`
-    : '<div class="streak muted">Отвечайте оба каждый день, и здесь появится ваша серия 🔥</div>';
+    ? `<div class="streak">${d.streak} ${plural(d.streak, 'день', 'дня', 'дней')} подряд вы открываете страницу вместе</div>`
+    : '<div class="streak muted">Страница дня — это лёгкий вопрос для спокойного времени, не только после ссоры. Так проще оставаться рядом.</div>';
   $app.innerHTML = `
     <div class="card sun">
       <p class="muted">☀️ Вопрос дня · ${new Date(d.date + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</p>
@@ -570,7 +626,7 @@ function renderTogether(o) {
   const head = `
     ${o.why ? `<div class="card warm"><p class="muted">${o.from === S.me.id ? 'Вы спрашиваете' : `${esc(o.fromName)} спрашивает`}, потому что:</p><div class="msgtext">${esc(o.why)}</div></div>` : ''}
     <div class="card">
-      <p class="muted">👫 Отвечаем вдвоём${o.from === S.me.id ? '' : `, вопрос от ${esc(o.fromName)}`}:</p>
+      <p class="muted">👫 Отвечаем вдвоём${o.from === S.me.id ? '' : `, спрашивает ${esc(o.fromName)}`}:</p>
       <div class="question">${esc(o.text)}</div>
       <div class="pair-status"><span class="${mine ? 'ok' : ''}">${mine ? '✓' : '…'} Вы</span><span class="${theirs ? 'ok' : ''}">${theirs ? '✓' : '…'} ${esc(S.partner.name)}</span></div>
     </div>`;
@@ -660,13 +716,15 @@ function renderSide() {
     ${partnerMessageCard()}
     <div class="card">
       <h1>🔒 Моя сторона</h1>
-      <div class="private"><span>👁️</span><span>Этот текст видит <b>только ИИ-помощник</b>. ${esc(S.partner.name)} его не увидит, и ИИ не будет его пересказывать.</span></div>
+      <div class="private"><span>👁️</span><span>Этот текст читает <b>ИИ-помощник</b>, чтобы подбирать вопросы точнее. ${esc(S.partner.name)} его не увидит, и ИИ не будет его цитировать или пересказывать. Можно не заполнять.</span></div>
       <p class="muted">Что произошло, что вы чувствуете, чего хотите и чего боитесь. Пишите как есть.</p>
       <textarea id="side" style="min-height:220px" maxlength="4000" placeholder="Например: мы спорим о том, как проводить выходные. Мне обидно, что…">${esc(sideDraft)}</textarea>
       <button id="save" style="margin-top:10px">Сохранить</button>
       ${S.me.situation ? '<button class="ghost" id="clear">Удалить мой текст</button>' : ''}
     </div>
-    <div class="card"><p class="muted">${esc(S.partner.name)} ${S.partner.sideFilled ? 'уже рассказал(а) свою сторону.' : 'пока не рассказал(а) свою сторону.'}</p></div>`;
+    <div class="card"><p class="muted">${esc(S.partner.name)} ${S.partner.sideFilled ? 'уже рассказал(а) свою сторону.' : 'пока не рассказал(а) свою сторону.'}</p></div>
+    ${makeupCard(false)}
+    <button class="ghost" data-go="tone">Тон вопросов и что нам откликается</button>`;
   const ta = document.getElementById('side');
   ta.oninput = () => (sideDraft = ta.value);
   const mt = document.getElementById('msg');
@@ -678,6 +736,7 @@ function renderSide() {
   document.getElementById('save').onclick = async () => { await api('/api/profile', { situation: sideDraft }); toast('Сохранено 🔒'); refresh(true); };
   const clear = document.getElementById('clear');
   if (clear) clear.onclick = async () => { sideDraft = ''; await api('/api/profile', { situation: '' }); refresh(true); };
+  bindSignalInputs();
 }
 
 function renderHistory() {
@@ -731,13 +790,16 @@ document.getElementById('tabs').onclick = (e) => {
 $app.addEventListener('click', async (e) => {
   const g = e.target.closest('[data-go]'); if (g) { tab = g.dataset.go; render(); return; }
   const vb = e.target.closest('[data-voice]'); if (vb) return playVoice(vb);
+  if (e.target.closest('[data-gohome]')) { view = 'home'; sigForm = null; showSummary = false; window.scrollTo(0, 0); return render(); }
+  if (e.target.closest('[data-gotalk]')) { goTalk(); window.scrollTo(0, 0); return render(); }
+  if (e.target.closest('[data-gosign]')) { view = 'signal'; window.scrollTo(0, 0); return render(); }
   if (e.target.closest('[data-tochat]')) { e.preventDefault(); return tg.close(); }
   const el = e.target.closest('[data-talkopen],[data-talkclose],[data-talkstart],[data-topic],[data-formtemp],[data-settemp],[data-retemp],[data-summary],[data-summaryclose],[data-check]');
   if (!el) return;
   e.preventDefault();
   const d = el.dataset;
   try {
-    if ('talkopen' in d) talkForm = { topic: null, temp: null };
+    if ('talkopen' in d) { talkForm = { topic: null, temp: null }; view = 'talk'; }
     else if ('talkclose' in d) talkForm = null;
     else if ('topic' in d) talkForm.topic = d.topic;
     else if ('formtemp' in d) talkForm.temp = Number(d.formtemp);
@@ -767,9 +829,7 @@ const FEELS = ['обидно', 'злюсь', 'устал(а)', 'страшно',
 const REPROACH = /(ты всегда|ты никогда|ты вечно|ты опять|ты снова|из-за тебя|ты виноват|сколько можно|тебе плевать|тебе всё равно|тебе все равно|как обычно)/i;
 
 function decorateGame() {
-  if (S.talk && (showSummary || S.talk.heardMine)) return;
-  $app.insertAdjacentHTML('afterbegin', `${pauseAskCard()}${incomingSignals()}${mySignals()}${stepCard()}${ideasCard()}`);
-  $app.insertAdjacentHTML('beforeend', `${signalPanel()}${S.me.makeup == null ? makeupCard(true) : ''}`);
+  $app.insertAdjacentHTML('afterbegin', `<button class="back" data-gohome>← На главную</button>${incomingSignals()}`);
   bindSignalInputs();
 }
 
@@ -787,7 +847,7 @@ function incomingSignals() {
     const r = sigReply?.id === s.id ? sigReply : null;
     const picked = r && s.replies.find((x) => x.key === r.key);
     return `<div class="card signal in">
-      <p class="muted">${s.emoji} Знак от ${esc(S.partner.name)}</p>
+      <p class="muted">${s.emoji} ${esc(S.partner.name)} подаёт знак</p>
       <div class="bubble">${esc(s.text)}</div>
       ${s.note ? `<div class="msgtext" style="margin-top:8px">${esc(s.note)}</div>` : ''}
       ${s.helps && ['makeup', 'sorry'].includes(s.kind) ? `<p class="muted" style="margin:8px 0 0">🤍 ${esc(S.partner.name)} помогает помириться: ${esc(s.helps)}</p>` : ''}
@@ -952,7 +1012,7 @@ async function onSignalClick(e) {
     else if ('stime' in d) sigForm.time = d.stime;
     else if ('ssend' in d) {
       await api('/api/signal', { kind: sigForm.kind, note: sigForm.note, time: sigForm.time });
-      haptic('medium'); toast(`Отправлено ${S.partner.name} 🤍`); sigForm = null; return refresh(true);
+      haptic('medium'); toast(`Отправлено ${S.partner.name} 🤍`); sigForm = null; view = 'home'; return refresh(true);
     } else if ('rpick' in d) {
       const [id, key] = d.rpick.split(':');
       const s = S.signals.pending.find((x) => x.id === id);
@@ -969,7 +1029,7 @@ async function onSignalClick(e) {
     else if ('mk' in d) { const k = makeupDraft.keys; makeupDraft.keys = k.includes(d.mk) ? k.filter((x) => x !== d.mk) : [...k, d.mk]; }
     else if ('mksave' in d) { await api('/api/profile', { makeup: makeupDraft.keys, makeupOwn: makeupDraft.own }); makeupDraft = null; toast('Сохранено 🤍'); return refresh(true); }
     else if ('mkskip' in d) { await api('/api/profile', { makeup: [] }); makeupDraft = null; return refresh(true); }
-    else if ('solo' in d) solo = { step: 1, temp: null, feels: [], important: '', msg: '' };
+    else if ('solo' in d) { solo = { step: 1, temp: null, feels: [], important: '', msg: '' }; tab = 'game'; }
     else if ('solotemp' in d) solo.temp = Number(d.solotemp);
     else if ('feelpick' in d) solo.feels = solo.feels.includes(d.feelpick) ? solo.feels.filter((x) => x !== d.feelpick) : [...solo.feels, d.feelpick].slice(-3);
     else if ('solonext' in d) { if (solo.step === 2) solo.msg = ''; solo.step += 1; }
@@ -982,7 +1042,7 @@ async function onSignalClick(e) {
     } else if ('safeok' in d) { await api('/api/safety/ok', {}); S.me.safety = false; return refresh(true); }
     else if ('deep' in d) { await api('/api/talk/deep', { on: true }); toast('Говорим о теме целиком 🔁'); library = { tone: null, items: [] }; return refresh(true); }
     else if ('resume' in d) { await api('/api/talk/resume', {}); toast('Продолжаем 🕊'); return refresh(true); }
-    else if ('saynow' in d) { compose = freshCompose('say'); }
+    else if ('saynow' in d) { compose = freshCompose('say'); view = 'talk'; }
     else if ('moreopen' in d) moreTimePick = '60';
     else if ('mtime' in d) moreTimePick = d.mtime;
     else if ('more' in d) { await api('/api/signal/more', { id: d.more, time: moreTimePick }); toast(`Хорошо, напомним ${config.times[moreTimePick]} 🌬`); moreTimePick = null; return refresh(true); }
@@ -997,7 +1057,7 @@ async function sendReply() {
   if (!r) return;
   sigReply = null; haptic('medium');
   if (r.ideas) lastIdeas = [...r.ideas].sort(() => Math.random() - 0.5).slice(0, 3);
-  if (r.talk && !S.talk) talkForm = { topic: null, temp: null };
+  if (r.talk && !S.talk) { talkForm = { topic: null, temp: null }; view = 'talk'; }
   toast(r.talk ? 'Отвечено. Выберите тему и начнём 🕊' : 'Ответ отправлен 🤍');
   refresh(true);
 }
