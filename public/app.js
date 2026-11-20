@@ -373,7 +373,7 @@ function plural(n, one, few, many) {
 
 function messageHint() {
   if (S.me.message) return '';
-  return `<div class="card warm"><h2>💌 Ваш посыл ${esc(S.partner.name)}</h2>
+  return `<div class="card warm"><h2>💌 Ваш посыл партнёру</h2>
     <p class="muted">Что вы хотите, чтобы ${esc(S.partner.name)} знал(а) перед разговором? Например: «Я не хочу ругаться. Я скучаю по нам». Это увидит ${esc(S.partner.name)}.</p>
     <button data-go="side">Написать посыл</button></div>`;
 }
@@ -633,7 +633,7 @@ function renderSide() {
   if (msgDraft === null) msgDraft = S.me.message || '';
   $app.innerHTML = `
     <div class="card warm">
-      <h1>💌 Мой посыл ${esc(S.partner.name)}</h1>
+      <h1>💌 Мой посыл партнёру</h1>
       <p class="muted">Что вы хотите, чтобы ${esc(S.partner.name)} знал(а) перед разговором и во время него. Это <b>увидит ${esc(S.partner.name)}</b>, над каждым вашим вопросом.</p>
       <textarea id="msg" style="min-height:90px" maxlength="600" placeholder="Например: Я не хочу ругаться. Я скучаю по нашим вечерам и хочу понять тебя.">${esc(msgDraft)}</textarea>
       <button id="saveMsg" style="margin-top:10px">${S.me.message ? 'Обновить посыл' : 'Отправить посыл'}</button>
