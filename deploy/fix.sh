@@ -7,8 +7,11 @@ git pull -q --ff-only || true
 tok=$(grep -E '^BOT_TOKEN=' .env 2>/dev/null | cut -d= -f2-)
 db=$(grep -E '^DATABASE_URL=' .env 2>/dev/null | cut -d= -f2-)
 if ! [[ "$tok" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]]; then
-  echo "Токен бота не найден или неверный. Вставьте токен от BotFather и нажмите Enter:"
-  read -r tok < /dev/tty
+  while ! [[ "$tok" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]]; do
+    echo "Токен бота не найден или неверный. Вставьте токен от BotFather (вида 123456:AA...) и нажмите Enter:"
+    read -r tok < /dev/tty
+    tok=$(echo "$tok" | tr -d '[:space:]')
+  done
 fi
 if [[ "$db" != postgres* ]]; then
   echo "Строка Neon не найдена. Вставьте её (postgresql://...) и нажмите Enter:"
