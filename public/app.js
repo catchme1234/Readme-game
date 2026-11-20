@@ -1,6 +1,9 @@
 const tg = window.Telegram?.WebApp;
 const inTelegram = Boolean(tg?.initData);
-if (inTelegram) { tg.ready(); tg.expand(); document.documentElement.classList.add('tg'); }
+if (inTelegram) {
+  tg.ready(); tg.expand(); document.documentElement.classList.add('tg');
+  try { tg.setHeaderColor('#FAF5ED'); tg.setBackgroundColor('#FAF5ED'); tg.setBottomBarColor?.('#FAF5ED'); } catch {}
+}
 
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -217,6 +220,8 @@ function render() {
   const dot = document.querySelector('#tabs [data-tab="daily"]');
   if (dot) dot.classList.toggle('dot', Boolean(S.daily && S.daily.mine == null));
   if (S.me.safety) return renderSafety();
+  const note = document.getElementById('brand-note');
+  if (note) note.textContent = !S.pair || !S.partner ? 'для двоих' : ({ game: 'ваш разговор', daily: 'вопрос дня', side: 'мои слова', tone: 'что откликается', history: 'история' }[tab] || '');
   if (solo && tab === 'game') return renderSolo();
   ({ game: renderGame, daily: renderDaily, side: renderSide, tone: () => renderTonePick(false), history: renderHistory }[tab])();
   if (tab === 'game') decorateGame();
@@ -226,10 +231,11 @@ function render() {
 function renderStart() {
   const join = new URLSearchParams(location.search).get('join') || '';
   $app.innerHTML = `
-    <div class="card hero">
-      <div class="big">💞</div>
-      <h1>Вопросы для двоих</h1>
-      <p class="muted">Когда поссорились и не можете начать разговор. Дайте партнёру знак одной кнопкой, остыньте и поговорите по шагам: задавайте друг другу вопросы по очереди, свои, из библиотеки или подсказанные ИИ.</p>
+    <div class="welcome">
+      <p class="eyebrow">Место для диалога</p>
+      <img class="art" src="brand/artwork.jpg" alt="Раскрытая книга со светом между страниц" />
+      <h1>Начать разговор<br>можно мягко.</h1>
+      <p class="lead">Когда поссорились и слова не находятся, ReadMe помогает начать с малого: дать знак одной кнопкой, остыть и поговорить по шагам, задавая друг другу вопросы по очереди.</p>
       <p class="muted">ИИ здесь не судья и не решает, кто прав. Говорите вы, своими словами.</p>
     </div>
     <div class="card">
@@ -241,7 +247,8 @@ function renderStart() {
       <button id="create">Создать пару и пригласить</button>
       <p class="muted" style="margin:14px 0 6px">или введите код от партнёра</p>
       <div class="row"><input id="code" placeholder="КОД" value="${esc(join)}" style="text-transform:uppercase" /><button id="join" class="ghost">Войти</button></div>
-    </div>`;
+    </div>
+    <p class="foot">Можно остановиться в любой момент</p>`;
   const saveName = () => api('/api/profile', { name: document.getElementById('name').value });
   document.getElementById('create').onclick = async () => { await saveName(); await api('/api/pair/create', {}); refresh(true); };
   document.getElementById('join').onclick = async () => {
@@ -353,7 +360,7 @@ function renderDaily() {
     <p class="muted" style="margin-top:10px">🙈 Ваш ответ спрятан. Он откроется, когда ответит ${esc(S.partner.name)}.</p>`;
   else body = `<p class="muted" style="margin-top:6px">${d.partnerAnswered ? `${esc(S.partner.name)} уже ответил(а). Ответьте, и вы увидите ответы друг друга.` : 'Ответы откроются, когда ответите оба.'}</p>
     <textarea id="dtext" maxlength="1000" placeholder="Ваш ответ">${esc(dailyDraft)}</textarea>
-    <button id="dsend" style="margin-top:10px">${d.partnerAnswered ? 'Ответить и открыть' : 'Ответить'}</button>`;
+    <button id="dsend" class="${d.partnerAnswered ? 'coral' : ''}" style="margin-top:10px">${d.partnerAnswered ? 'Ответить и открыть' : 'Ответить'}</button>`;
   const streak = d.streak
     ? `<div class="streak"><span>🔥 ${d.streak}</span> ${plural(d.streak, 'день', 'дня', 'дней')} подряд вы отвечаете вместе</div>`
     : '<div class="streak muted">Отвечайте оба каждый день, и здесь появится ваша серия 🔥</div>';
@@ -581,7 +588,7 @@ function renderTogether(o) {
       ${canRate ? `<p class="muted" style="margin-top:12px">Как вам этот вопрос?</p>
       <div class="rating">${Object.entries(rateLabel).map(([k, l]) => `<button data-rate="${k}" class="${answer.rating === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
       ${feelChips()}
-      <button id="send" style="margin-top:10px">${theirs ? 'Ответить и открыть ответы' : 'Ответить'}</button>
+      <button id="send" class="${theirs ? 'coral' : ''}" style="margin-top:10px">${theirs ? 'Ответить и открыть ответы' : 'Ответить'}</button>
       ${voiceHint()}
     </div>`;
   const ta = document.getElementById('atext');
