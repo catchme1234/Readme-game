@@ -39,6 +39,40 @@ if (BOT_TOKEN) {
     await ctx.reply(text, { reply_markup: openBtn(url) });
   });
 
+  // Голосовой ответ: человек записывает голосовое прямо в чате с ботом,
+  // и оно становится ответом на открытый вопрос.
+  bot.on('message:voice', async (ctx) => {
+    const uid = String(ctx.from.id);
+    const user = S.getUser(uid);
+    const pair = user?.pairId && S.getPair(user.pairId);
+    const open = pair && S.openQuestion(pair.id);
+    const canTogether = open?.kind === 'together' && [open.from, open.to].includes(uid) && open.answers?.[uid] == null;
+    if (!open || !(open.to === uid || canTogether)) {
+      return ctx.reply('Сейчас нет вопроса, на который можно ответить голосом. Когда партнёр задаст вопрос, просто пришлите сюда голосовое 🎙', { reply_markup: new InlineKeyboard().webApp('Открыть игру 💞', WEBAPP_URL) });
+    }
+    const v = { id: ctx.message.voice.file_id, dur: ctx.message.voice.duration };
+    const label = `🎙 Голосовой ответ (${fmtDur(v.dur)})`;
+    const partnerId = S.partnerOf(pair, uid);
+    if (canTogether) {
+      const names = { [uid]: user.name, [partnerId]: S.getUser(partnerId)?.name };
+      const { done, q } = S.answerTogether(open.id, uid, label, null, names, v);
+      if (done) {
+        // Ответы открылись: каждый получает голос другого (если он был голосовым).
+        for (const m of [q.from, q.to]) {
+          const other = m === q.from ? q.to : q.from;
+          if (q.voices?.[other]) sendVoice(m, q.voices[other].id, `🎙 ${S.getUser(other)?.name} ответил(а) на «${q.text}»`);
+          notify(m, '👫 Ответы открылись! Посмотрите в игре.');
+        }
+      } else {
+        notify(partnerId, `👫 ${user.name} уже ответил(а) голосом. Ответьте и вы, чтобы услышать друг друга.`);
+      }
+      return ctx.reply(done ? 'Ответ принят, ответы открылись 👫' : 'Ответ принят и спрятан, пока не ответит партнёр 🙈');
+    }
+    S.answerQuestion(open.id, label, null, v);
+    sendVoice(partnerId, v.id, `🎙 ${user.name} ответил(а) голосом на ваш вопрос «${open.text}»`);
+    return ctx.reply('Голосовой ответ отправлен 💌 Теперь ваш ход: откройте игру, чтобы задать вопрос.', { reply_markup: new InlineKeyboard().webApp('Открыть игру 💞', WEBAPP_URL) });
+  });
+
   bot.catch((e) => console.error('Bot error:', e.message));
   bot.init().then(async () => {
     botUsername = bot.botInfo.username;
@@ -86,6 +120,13 @@ async function notify(uid, text, button = 'Открыть 💞') {
   } catch (e) {
     console.error('notify failed:', e.message);
   }
+}
+
+const fmtDur = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+async function sendVoice(uid, fileId, caption) {
+  if (!bot || String(uid).startsWith('demo')) return;
+  try { await bot.api.sendVoice(uid, fileId, { caption }); } catch (e) { console.error('sendVoice failed:', e.message); }
 }
 
 // ---------- Проверка пользователя Telegram ----------
@@ -147,6 +188,10 @@ function publicQ(q, users) {
     reply: q.reply || null, replyDone: Boolean(q.replyDone),
     // Ответы вдвоём скрыты, пока не ответили оба: видно только, кто уже ответил.
     answers: q.kind === 'together' && q.answer != null ? q.answers : null,
+    // Голос: только признак и длительность; сам файл отдаётся по /api/voice.
+    voice: q.voice ? { dur: q.voice.dur } : null,
+    voices: q.kind === 'together' && q.answer != null && q.voices
+      ? Object.fromEntries(Object.entries(q.voices).map(([k, v]) => [k, { dur: v.dur }])) : null,
     answeredBy: q.kind === 'together' ? Object.keys(q.answers || {}) : null,
     createdAt: q.createdAt, answeredAt: q.answeredAt,
   };
@@ -230,7 +275,7 @@ app.use(express.static(path.resolve('public')));
 if (bot && USE_WEBHOOK) app.post(`/tg/${HOOK_SECRET}`, webhookCallback(bot, 'express', { secretToken: HOOK_SECRET }));
 app.get('/health', (req, res) => res.send('ok'));
 
-app.get('/api/config', (req, res) => res.json({ demo: DEMO, aiEnabled, tones: TONES, stages: STAGES, topics: TOPICS }));
+app.get('/api/config', (req, res) => res.json({ demo: DEMO, aiEnabled, tones: TONES, stages: STAGES, topics: TOPICS, voice: Boolean(bot) }));
 
 app.use('/api', auth);
 
@@ -379,6 +424,7 @@ app.post('/api/answer', (req, res) => {
     const { done } = S.answerTogether(open.id, req.user.id, text, rating, names);
     applyFeel(pair, req.user.id, req.body.feel);
     if (done) {
+      if (open.voices?.[other]) sendVoice(req.user.id, open.voices[other].id, `🎙 ${names[other]} ответил(а) на «${open.text}»`);
       notify(other, `👫 Ответы открылись! Посмотрите, что ответил(а) ${req.user.name}.`);
     } else {
       notify(other, `👫 ${req.user.name} уже ответил(а). Ответьте и вы, чтобы увидеть ответы друг друга.`);
@@ -421,6 +467,24 @@ app.post('/api/daily', (req, res) => {
     ? `☀️ Ответы на вопрос дня открылись! Посмотрите, что ответил(а) ${req.user.name}.`
     : `☀️ ${req.user.name} ответил(а) на вопрос дня. Ответьте и вы, чтобы увидеть ответы друг друга.`, 'Открыть ☀️');
   res.json({ ok: true, both });
+});
+
+// Прослушать голосовой ответ в игре: файл берём у Telegram.
+app.get('/api/voice/:qid', async (req, res) => {
+  const q = S.findQuestion(req.params.qid);
+  if (!q || q.pairId !== req.user.pairId || !bot) return res.status(404).end();
+  let v = q.voice;
+  if (q.kind === 'together') v = q.answer != null ? q.voices?.[req.query.who] : null;
+  if (!v) return res.status(404).end();
+  try {
+    const f = await bot.api.getFile(v.id);
+    const r = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${f.file_path}`);
+    res.set('Content-Type', 'audio/ogg');
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    console.error('voice fetch failed:', e.message);
+    res.status(502).end();
+  }
 });
 
 function talkCtx(req, res) {

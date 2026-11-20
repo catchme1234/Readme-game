@@ -167,7 +167,7 @@ function replyCard() {
   return `<div class="card warm">
     <p class="muted">${esc(S.partner.name)} ${q.kind === 'say' ? 'откликнулся(ась) на ваши слова' : 'ответил(а) на ваш вопрос'}:</p>
     <p class="muted" style="margin-bottom:4px">«${esc(q.text)}»</p>
-    <div class="a">${esc(q.answer)}</div>
+    <div class="a">${esc(q.answer)}${q.voice ? voiceBtn(q) : ''}</div>
     <h2 style="margin-top:14px">Скажите ${esc(S.partner.name)} пару слов</h2>
     <textarea id="reply" style="min-height:70px" maxlength="600" placeholder="Например: Спасибо, что сказал(а). Я не знал(а), что тебе так тяжело.">${esc(replyDraft)}</textarea>
     <div class="row" style="margin-top:8px"><button id="replySend">Отправить</button><button class="ghost" id="replySkip">Пропустить</button></div>
@@ -422,7 +422,7 @@ function renderCompose() {
   } else if (m === 'library') {
     if (library.tone !== compose.tone) { loadLibrary(); pane.innerHTML = '<p class="muted">Загрузка…</p>'; }
     else pane.innerHTML = `<div class="qlist">${library.items.map((q, i) =>
-      `<button data-pick="${i}" class="${compose.picked === q.text ? 'on' : ''} ${q.asked ? 'asked' : ''}">${esc(q.text)}${q.asked ? ' <span class="muted">(уже был)</span>' : ''}</button>`).join('')}</div>
+      `<button data-pick="${i}" class="${compose.picked === q.text ? 'on' : ''} ${q.asked ? 'asked' : ''}">${q.stage ? `<span class="stagetag">Ступень ${q.stage}</span>` : ''}${esc(q.text)}${q.asked ? ' <span class="muted">(уже был)</span>' : ''}</button>`).join('')}</div>
       ${pickedEditor()}`;
   } else {
     pane.innerHTML = `
@@ -529,6 +529,7 @@ function renderAnswer(o) {
       <div class="rating">${Object.entries(rateLabel).map(([k, l]) => `<button data-rate="${k}" class="${answer.rating === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       ${feelChips()}
       <button id="send">Ответить</button>
+      ${voiceHint()}
     </div>`;
   const ta = document.getElementById('atext');
   ta.oninput = () => (answer.text = ta.value);
@@ -569,6 +570,7 @@ function renderTogether(o) {
       <div class="rating">${Object.entries(rateLabel).map(([k, l]) => `<button data-rate="${k}" class="${answer.rating === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
       ${feelChips()}
       <button id="send" style="margin-top:10px">${theirs ? 'Ответить и открыть ответы' : 'Ответить'}</button>
+      ${voiceHint()}
     </div>`;
   const ta = document.getElementById('atext');
   ta.oninput = () => (answer.text = ta.value);
@@ -585,6 +587,26 @@ function renderTogether(o) {
 }
 
 // Партнёр не спросил, а сказал что-то своё: можно ответить или просто дать понять, что услышал(а).
+// Голосовой ответ: записывается в чате с ботом и сразу становится ответом.
+function voiceHint() {
+  if (!config.voice) return '';
+  return `<div class="voicehint"><span>🎙</span><span><b>Хотите ответить голосом?</b> Запишите голосовое в чате с ботом, и оно станет ответом. ${inTelegram ? '<a href="#" data-tochat>Перейти в чат</a>' : ''}</span></div>`;
+}
+
+async function playVoice(btn) {
+  if (btn.dataset.loading) return;
+  btn.dataset.loading = '1'; btn.textContent = '⏳ Загрузка…';
+  try {
+    const headers = inTelegram ? { 'X-Init-Data': tg.initData } : { 'X-Demo-User': demoUser };
+    const r = await fetch(`/api/voice/${btn.dataset.voice}${btn.dataset.who ? `?who=${btn.dataset.who}` : ''}`, { headers });
+    if (!r.ok) throw new Error();
+    const audio = document.createElement('audio');
+    audio.controls = true; audio.src = URL.createObjectURL(await r.blob());
+    btn.replaceWith(audio); audio.play().catch(() => {});
+  } catch { btn.textContent = 'Не удалось загрузить. Голос есть в чате с ботом.'; }
+}
+const voiceBtn = (q, who) => `<button class="ghost voice" data-voice="${q.id}" ${who ? `data-who="${who}"` : ''}>▶️ Послушать</button>`;
+
 function renderHear(o) {
   $app.innerHTML = `
     <div class="card warm">
@@ -649,8 +671,8 @@ function renderHistory() {
       ${q.why ? `<p class="muted">Зачем: ${esc(q.why)}</p>` : ''}
       <b>${esc(q.text)}</b>
       ${q.answers
-        ? `<div class="duo">${[q.from, q.to].map((m) => `<div><span class="muted">${who(m)}</span>${esc(q.answers[m])}</div>`).join('')}</div>`
-        : `<div class="a"><span class="muted">${who(q.to)}:</span> ${esc(q.answer)}</div>`}
+        ? `<div class="duo">${[q.from, q.to].map((m) => `<div><span class="muted">${who(m)}</span>${esc(q.answers[m])}${q.voices?.[m] ? voiceBtn(q, m) : ''}</div>`).join('')}</div>`
+        : `<div class="a"><span class="muted">${who(q.to)}:</span> ${esc(q.answer)}${q.voice ? voiceBtn(q) : ''}</div>`}
       ${q.reply ? `<div class="a r"><span class="muted">${who(q.from)}:</span> ${esc(q.reply)}</div>` : ''}
       <p style="margin-top:8px">${q.kind === 'say' ? '' : `<span class="badge">${toneLabel(q.tone)}</span>`}<span class="badge">${srcBadge(q)}</span>${q.rating ? `<span class="badge">${rateLabel[q.rating]}</span>` : ''}</p>
     </div>` })),
@@ -663,8 +685,8 @@ function renderHistory() {
   $app.innerHTML = `<h1 style="padding:0 4px 8px">📖 История</h1>
     <div class="card warm">
       ${letterDraft === null
-        ? `<h2>✉️ Письмо ${esc(S.partner.name)}</h2><p class="muted">Короткое письмо своими словами. Например, в конце разговора: что вы услышали и что чувствуете сейчас.</p><button id="letterOpen">Написать письмо</button>`
-        : `<h2>✉️ Письмо ${esc(S.partner.name)}</h2>
+        ? `<h2>✉️ Письмо партнёру</h2><p class="muted">Короткое письмо своими словами. Например, в конце разговора: что вы услышали и что чувствуете сейчас.</p><button id="letterOpen">Написать письмо</button>`
+        : `<h2>✉️ Письмо партнёру</h2>
            <textarea id="letter" maxlength="3000" style="min-height:140px" placeholder="Сегодня я услышал(а), что… Мне важно, чтобы ты знал(а)…">${esc(letterDraft)}</textarea>
            <div class="row" style="margin-top:8px"><button id="letterSend">Отправить</button><button class="ghost" id="letterCancel">Отмена</button></div>`}
     </div>` + (items.length ? items.map((x) => x.html).join('') : '<div class="card center muted">Здесь появятся ваши вопросы, ответы и письма.</div>');
@@ -688,6 +710,8 @@ document.getElementById('tabs').onclick = (e) => {
 };
 $app.addEventListener('click', async (e) => {
   const g = e.target.closest('[data-go]'); if (g) { tab = g.dataset.go; render(); return; }
+  const vb = e.target.closest('[data-voice]'); if (vb) return playVoice(vb);
+  if (e.target.closest('[data-tochat]')) { e.preventDefault(); return tg.close(); }
   const el = e.target.closest('[data-talkopen],[data-talkclose],[data-talkstart],[data-topic],[data-formtemp],[data-settemp],[data-retemp],[data-summary],[data-summaryclose],[data-check]');
   if (!el) return;
   e.preventDefault();

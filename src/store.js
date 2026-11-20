@@ -111,8 +111,9 @@ export function addQuestion(q) {
   return full;
 }
 
-export function answerQuestion(qid, answer, rating) {
+export function answerQuestion(qid, answer, rating, voice = null) {
   const q = db.questions.find((x) => x.id === qid);
+  if (voice) q.voice = voice;
   q.answer = answer;
   q.rating = rating;
   q.answeredAt = Date.now();
@@ -141,9 +142,10 @@ export function addLetter(l) {
 }
 
 // «Отвечаем вдвоём»: оба отвечают на один вопрос, ответы открываются, только когда ответили оба.
-export function answerTogether(qid, uid, text, rating, names) {
+export function answerTogether(qid, uid, text, rating, names, voice = null) {
   const q = db.questions.find((x) => x.id === qid);
   q.answers ??= {};
+  if (voice) q.voices = { ...(q.voices || {}), [uid]: voice };
   q.answers[uid] = text;
   if (uid === q.to && rating) q.rating = rating;
   const done = [q.from, q.to].every((m) => q.answers[m] != null);
@@ -160,3 +162,5 @@ export function answerTogether(qid, uid, text, rating, names) {
 // Сохранить изменения пары, сделанные снаружи (например, вопрос дня).
 export function touch() { save(); }
 export const allPairs = () => Object.values(db.pairs);
+
+export const findQuestion = (qid) => db.questions.find((x) => x.id === qid) || null;
