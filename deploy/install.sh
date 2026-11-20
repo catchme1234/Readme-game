@@ -4,7 +4,10 @@
 set -euo pipefail
 DIR=/opt/para-game
 
-command -v docker >/dev/null || { echo "Docker не найден. Установите Docker и запустите снова."; exit 1; }
+if ! command -v docker >/dev/null; then
+  echo "Устанавливаю Docker (пара минут)…"
+  curl -fsSL https://get.docker.com | sh
+fi
 command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
 
 if [ -d "$DIR/.git" ]; then
