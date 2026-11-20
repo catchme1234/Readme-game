@@ -17,6 +17,114 @@ let replyDraft = '';
 let letterDraft = null;   // null — форма письма закрыта
 let msgDraft = null;
 let dailyDraft = '';
+let feelPick = null;          // «легче / так же / тяжелее» после ответа
+let talkForm = null;          // { topic, temp } — форма начала разговора
+let summary = null;           // { heard, step } — форма итога
+
+const TEMP_LABEL = ['', 'спокойно', 'чуть напряжённо', 'горячо', 'очень горячо', 'кипит'];
+
+// Полоска ступеней разговора и свой градус.
+function talkBar() {
+  const t = S.talk;
+  if (!t) return '';
+  const st = config.stages[t.stage];
+  const ready = t.stage >= 5 || t.questions >= 8;
+  return `<div class="card talk">
+    <div class="row" style="justify-content:space-between;align-items:baseline"><b>🕊 ${esc(config.topics[t.topic])}</b><span class="muted">${t.questions} ${plural(t.questions, 'вопрос', 'вопроса', 'вопросов')}</span></div>
+    <div class="steps">${[1, 2, 3, 4, 5].map((n) => `<i class="${n < t.stage ? 'd' : n === t.stage ? 'now' : ''}"></i>`).join('')}</div>
+    <p style="margin:6px 0 0"><b>Ступень ${t.stage}: ${esc(st.label)}.</b> <span class="muted">${esc(st.hint)}.</span></p>
+    ${t.myTemp == null
+      ? `<p style="margin:12px 0 6px"><b>Насколько вам сейчас горячо?</b> <span class="muted">Видите только вы.</span></p>${tempChips(null, 'settemp')}`
+      : `<p class="muted" style="margin:10px 0 0">Мой градус: ${t.myTemp} · ${TEMP_LABEL[t.myTemp]} <span>(видите только вы)</span> · <a href="#" data-retemp>изменить</a></p>`}
+    ${!t.partnerTempSet ? `<p class="muted" style="margin:6px 0 0">${esc(S.partner.name)} ещё не отметил(а) свой градус.</p>` : ''}
+    ${t.partnerHeard ? `<p style="margin:10px 0 0"><b>${esc(S.partner.name)} уже подводит итог и ждёт вас.</b></p>` : ''}
+    <button class="${ready || t.partnerHeard ? '' : 'ghost'}" data-summary style="margin-top:12px">🌿 Подвести итог</button>
+  </div>`;
+}
+
+function tempChips(cur, attr) {
+  return `<div class="temps">${[1, 2, 3, 4, 5].map((n) => `<button data-${attr}="${n}" class="t${n} ${cur === n ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <p class="muted" style="margin:4px 0 0;font-size:12px">1 — спокойно, 5 — кипит</p>`;
+}
+
+function startTalkCard() {
+  if (S.talk) return '';
+  if (!talkForm) {
+    return `<div class="card talk"><b>🕊 Застряли в споре?</b>
+      <p class="muted" style="margin:6px 0 10px">Начните разговор по ступеням: от «остыть» до «маленького шага». Вопросы будут подбираться под то, где вы сейчас.</p>
+      <button class="ghost" data-talkopen>Начать разговор</button></div>`;
+  }
+  return `<div class="card talk"><h2>🕊 Новый разговор</h2>
+    <p><b>О чём тупик?</b></p>
+    <div class="chips">${Object.entries(config.topics).map(([k, l]) => `<button class="chip ${talkForm.topic === k ? 'on' : ''}" data-topic="${k}">${esc(l)}</button>`).join('')}</div>
+    <p><b>Насколько вам сейчас горячо?</b> <span class="muted">Видите только вы.</span></p>
+    ${tempChips(talkForm.temp, 'formtemp')}
+    <div class="row" style="margin-top:12px"><button data-talkstart>Начать</button><button class="ghost" data-talkclose>Отмена</button></div>
+  </div>`;
+}
+
+function feelChips() {
+  if (!S.talk) return '';
+  const opts = { better: '🙂 Легче', same: '😐 Так же', worse: '😣 Тяжелее' };
+  return `<p class="muted" style="margin-top:12px">А как вам сейчас? <span>(видите только вы, это помогает подобрать следующий вопрос)</span></p>
+    <div class="rating">${Object.entries(opts).map(([k, l]) => `<button data-feel="${k}" class="${feelPick === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+}
+
+function lastTalkCard() {
+  const t = S.lastTalk;
+  if (!t || S.talk) return '';
+  const fresh = Date.now() - t.endedAt < 2 * 86400000;
+  if (!fresh && !t.checkDue) return '';
+  const heard = Object.entries(t.heard).sort(([a]) => (a === S.me.id ? -1 : 1))
+    .map(([m, h]) => `<p style="margin:4px 0"><b>${m === S.me.id ? 'Вы' : esc(S.partner.name)} услышали:</b> ${esc(h)}</p>`).join('');
+  const check = t.checkDue ? `
+    <div class="sep"></div><b>🌱 Прошло 3 дня. Получается?</b>
+    <div class="rating" style="margin-top:8px"><button data-check="yes">👍 Да</button><button data-check="partly">🤏 Частично</button><button data-check="no">👎 Не очень</button></div>` : '';
+  return `<div class="card warm"><p class="muted">🌿 Итог разговора «${esc(config.topics[t.topic])}» · ${t.questions} ${plural(t.questions, 'вопрос', 'вопроса', 'вопросов')}${t.myTempStart ? ` · ваш градус ${t.myTempStart} → ${t.myTempEnd}` : ''}</p>
+    ${heard}
+    ${t.step ? `<p style="margin:10px 0 0"><b>Наш маленький шаг:</b> ${esc(t.step)}</p>` : ''}
+    ${check}
+  </div>`;
+}
+
+function renderSummary() {
+  const t = S.talk;
+  summary ??= { heard: '', step: t.step || '' };
+  const waiting = t.heardMine && !t.heard;
+  $app.innerHTML = `
+    <div class="card warm"><h1>🌿 Итог разговора</h1>
+      <p class="muted">${t.questions} ${plural(t.questions, 'вопрос', 'вопроса', 'вопросов')} · ${esc(config.topics[t.topic])}</p></div>
+    ${waiting ? `
+      <div class="card"><p class="muted">Вы написали:</p><div class="msgtext">${esc(t.heardMine)}</div></div>
+      <div class="card hero"><div class="big">🙈</div><h1>Ждём ${esc(S.partner.name)}</h1>
+        <p class="muted">Итог откроется, когда ${esc(S.partner.name)} тоже напишет, что услышал(а).</p></div>
+      <button class="ghost" data-summaryclose>Вернуться к вопросам</button>` : `
+    <div class="card">
+      <h2>Что я услышал(а) от ${esc(S.partner.name)}</h2>
+      <p class="muted">Одной-двумя фразами, своими словами. ${esc(S.partner.name)} увидит это, когда тоже напишет.</p>
+      <textarea id="heard" maxlength="1000" placeholder="Я услышал(а), что тебе…">${esc(summary.heard)}</textarea>
+      <h2 style="margin-top:14px">Наш маленький шаг</h2>
+      <p class="muted">Одно конкретное действие. Через 3 дня бот спросит у вас обоих, получается ли.${t.step ? ' Можно поправить то, что предложил(а) партнёр.' : ''}</p>
+      <textarea id="step" maxlength="500" style="min-height:70px" placeholder="Например: если задерживаюсь, пишу до 18:00">${esc(summary.step)}</textarea>
+      <button id="finish" style="margin-top:10px">Сохранить итог</button>
+      <button class="ghost" data-summaryclose>Ещё поговорим</button>
+    </div>`}`;
+  const h = document.getElementById('heard');
+  if (h) {
+    h.oninput = () => (summary.heard = h.value);
+    const st = document.getElementById('step');
+    st.oninput = () => (summary.step = st.value);
+    document.getElementById('finish').onclick = async () => {
+      try {
+        const r = await api('/api/talk/finish', summary);
+        summary = null; haptic('medium');
+        if (r.done) { showSummary = false; toast('Итог сохранён 🌿'); }
+        refresh(true);
+      } catch (e) { toast(e.message); }
+    };
+  }
+}
+let showSummary = false;
 let answer = { text: '', rating: null };
 let sideDraft = null;
 let library = { tone: null, items: [] };
@@ -194,6 +302,7 @@ function insightBlock(i, who) {
 
 function renderGame() {
   const o = S.open;
+  if (S.talk && (showSummary || S.talk.heardMine)) return renderSummary();
   if (o && o.kind === 'together') return renderTogether(o);
   if (o && o.to === S.me.id) return renderAnswer(o);
   if (o && o.from === S.me.id) {
@@ -202,11 +311,11 @@ function renderGame() {
         <p class="muted">Мы пришлём уведомление в Telegram, когда ответ придёт.</p></div>
       <div class="card">${o.kind === 'say' ? '<p class="muted">Вы сказали:</p>' : `<span class="badge">${toneLabel(o.tone)}</span><span class="badge">${srcBadge(o)}</span>`}
         <div class="question">${esc(o.text)}</div>${o.why ? `<p class="muted">Зачем: ${esc(o.why)}</p>` : ''}</div>
-      ${dailyHint()}${messageHint()}${sideHint()}`;
+      ${talkBar()}${dailyHint()}${messageHint()}${sideHint()}`;
     return;
   }
   if (!S.pair.myTurn) {
-    $app.innerHTML = `${replyCard()}<div class="card hero"><div class="big">🤍</div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
+    $app.innerHTML = `${lastTalkCard()}${replyCard()}${talkBar()}${startTalkCard()}<div class="card hero"><div class="big">🤍</div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
       <p class="muted">Скоро вам придёт вопрос.</p></div>${dailyHint()}${partnerMessageCard()}${messageHint()}${sideHint()}`;
     bindReply();
     return;
@@ -281,6 +390,7 @@ function renderCompose() {
   const tones = Object.entries(config.tones);
   const m = compose.mode;
   $app.innerHTML = `
+    ${lastTalkCard()}${talkBar()}${startTalkCard()}
     ${partnerMessageCard()}
     <div class="card">
       <h1>Ваш ход ✨</h1>
@@ -417,15 +527,17 @@ function renderAnswer(o) {
       <textarea id="atext" placeholder="Ответьте честно, как чувствуете">${esc(answer.text)}</textarea>
       <p class="muted" style="margin-top:12px">Как вам этот вопрос? Так ${esc(o.fromName)} поймёт, какие вопросы вам ближе.</p>
       <div class="rating">${Object.entries(rateLabel).map(([k, l]) => `<button data-rate="${k}" class="${answer.rating === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${feelChips()}
       <button id="send">Ответить</button>
     </div>`;
   const ta = document.getElementById('atext');
   ta.oninput = () => (answer.text = ta.value);
   $app.querySelectorAll('[data-rate]').forEach((b) => (b.onclick = () => { answer.rating = b.dataset.rate; haptic(); renderAnswer(o); }));
+  $app.querySelectorAll('[data-feel]').forEach((b) => (b.onclick = () => { feelPick = b.dataset.feel; haptic(); renderAnswer(o); }));
   document.getElementById('send').onclick = async () => {
     try {
-      await api('/api/answer', { answer: answer.text, rating: answer.rating });
-      answer = { text: '', rating: null }; haptic('medium'); toast('Ответ отправлен. Теперь ваш ход ✨');
+      await api('/api/answer', { answer: answer.text, rating: answer.rating, feel: feelPick });
+      answer = { text: '', rating: null }; feelPick = null; haptic('medium'); toast('Ответ отправлен. Теперь ваш ход ✨');
       refresh(true);
     } catch (e) { toast(e.message); }
   };
@@ -455,15 +567,17 @@ function renderTogether(o) {
       <textarea id="atext" placeholder="Ответьте честно, как чувствуете">${esc(answer.text)}</textarea>
       ${canRate ? `<p class="muted" style="margin-top:12px">Как вам этот вопрос?</p>
       <div class="rating">${Object.entries(rateLabel).map(([k, l]) => `<button data-rate="${k}" class="${answer.rating === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
+      ${feelChips()}
       <button id="send" style="margin-top:10px">${theirs ? 'Ответить и открыть ответы' : 'Ответить'}</button>
     </div>`;
   const ta = document.getElementById('atext');
   ta.oninput = () => (answer.text = ta.value);
   $app.querySelectorAll('[data-rate]').forEach((b) => (b.onclick = () => { answer.rating = b.dataset.rate; haptic(); renderTogether(o); }));
+  $app.querySelectorAll('[data-feel]').forEach((b) => (b.onclick = () => { feelPick = b.dataset.feel; haptic(); renderTogether(o); }));
   document.getElementById('send').onclick = async () => {
     try {
-      const r = await api('/api/answer', { answer: answer.text, rating: answer.rating });
-      answer = { text: '', rating: null }; haptic('medium');
+      const r = await api('/api/answer', { answer: answer.text, rating: answer.rating, feel: feelPick });
+      answer = { text: '', rating: null }; feelPick = null; haptic('medium');
       if (r.done) { tab = 'history'; toast('Ответы открылись 👫'); } else toast('Ответ спрятан до ответа партнёра 🙈');
       refresh(true);
     } catch (e) { toast(e.message); }
@@ -572,8 +686,28 @@ document.getElementById('tabs').onclick = (e) => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
   tab = b.dataset.tab; render();
 };
-$app.addEventListener('click', (e) => {
-  const g = e.target.closest('[data-go]'); if (g) { tab = g.dataset.go; render(); }
+$app.addEventListener('click', async (e) => {
+  const g = e.target.closest('[data-go]'); if (g) { tab = g.dataset.go; render(); return; }
+  const el = e.target.closest('[data-talkopen],[data-talkclose],[data-talkstart],[data-topic],[data-formtemp],[data-settemp],[data-retemp],[data-summary],[data-summaryclose],[data-check]');
+  if (!el) return;
+  e.preventDefault();
+  const d = el.dataset;
+  try {
+    if ('talkopen' in d) talkForm = { topic: null, temp: null };
+    else if ('talkclose' in d) talkForm = null;
+    else if ('topic' in d) talkForm.topic = d.topic;
+    else if ('formtemp' in d) talkForm.temp = Number(d.formtemp);
+    else if ('talkstart' in d) {
+      if (!talkForm.topic) return toast('Выберите, о чём тупик');
+      if (!talkForm.temp) return toast('Отметьте, насколько сейчас горячо');
+      await api('/api/talk/start', talkForm); talkForm = null; haptic('medium'); toast('Разговор начат 🕊'); return refresh(true);
+    } else if ('settemp' in d) { await api('/api/talk/temp', { temp: Number(d.settemp) }); haptic(); return refresh(true); }
+    else if ('retemp' in d) { S.talk.myTemp = null; }
+    else if ('summary' in d) showSummary = true;
+    else if ('summaryclose' in d) showSummary = false;
+    else if ('check' in d) { await api('/api/talk/check', { id: S.lastTalk.id, value: d.check }); toast(d.check === 'no' ? 'Спасибо за честность. Можно начать новый разговор 🕊' : 'Здорово 🌱'); return refresh(true); }
+    haptic(); render();
+  } catch (err) { toast(err.message); }
 });
 
 (async function init() {
@@ -587,7 +721,7 @@ $app.addEventListener('click', (e) => {
       const b = e.target.closest('[data-demo]'); if (!b) return;
       demoUser = b.dataset.demo; localStorageSet('demoUser', demoUser); mark();
       compose = freshCompose();
-      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; dailyDraft = ''; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game';
+      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; dailyDraft = ''; feelPick = null; talkForm = null; summary = null; showSummary = false; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game';
       refresh(true);
     };
   }

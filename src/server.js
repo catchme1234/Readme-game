@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
 import * as S from './store.js';
-import { LIBRARY, TONES } from './library.js';
+import { LIBRARY, TONES, STAGES, TOPICS, STAGE_Q } from './library.js';
+import * as T from './talk.js';
 import { suggestQuestions, aiEnabled } from './ai.js';
 import * as D from './daily.js';
 
@@ -151,6 +152,44 @@ function publicQ(q, users) {
   };
 }
 
+// ---------- Разговор по ступеням ----------
+// Градус и «легче / тяжелее» каждого видит только он сам: партнёру не отдаём.
+function talkView(pair, uid, partner) {
+  const t = pair.talk;
+  if (!t || !partner) return null;
+  const bothHeard = pair.members.every((m) => t.heard[m]);
+  return {
+    id: t.id, topic: t.topic, stage: t.stage, startedAt: t.startedAt,
+    myTemp: t.temps[uid] ?? null, partnerTempSet: t.temps[partner.id] != null,
+    questions: S.pairQuestions(pair.id).length - t.qStart,
+    heardMine: t.heard[uid] || null, partnerHeard: Boolean(t.heard[partner.id]),
+    heard: bothHeard ? t.heard : null, step: t.step,
+  };
+}
+
+function lastTalkView(pair, uid, partner) {
+  const t = pair.talks?.[0];
+  if (!t || !partner) return null;
+  return {
+    id: t.id, topic: t.topic, endedAt: t.endedAt, questions: t.questions, step: t.step,
+    heard: t.heard, myTempStart: t.tempStart[uid] ?? null, myTempEnd: t.temps[uid] ?? null,
+    checkDue: Date.now() >= t.checkAt && !t.checks?.[uid],
+    checks: t.checks || {},
+  };
+}
+
+function talkTick() {
+  for (const pair of S.allPairs()) {
+    const t = pair.talks?.[0];
+    if (!t || t.checkNotified || Date.now() < t.checkAt) continue;
+    t.checkNotified = true;
+    for (const m of pair.members) {
+      notify(m, `🌱 Прошло 3 дня после вашего разговора.${t.step ? `\n\nВы договорились: «${t.step}»` : ''}\n\nПолучается? Отметьте в игре.`, 'Отметить 🌱');
+    }
+  }
+  S.touch();
+}
+
 // ---------- Вопрос дня ----------
 function dailyView(pair, uid, partner) {
   if (!partner) return null;
@@ -182,7 +221,7 @@ function dailyTick() {
   }
   S.touch();
 }
-setInterval(dailyTick, 10 * 60 * 1000);
+setInterval(() => { dailyTick(); talkTick(); }, 10 * 60 * 1000);
 
 // ---------- API ----------
 const app = express();
@@ -191,7 +230,7 @@ app.use(express.static(path.resolve('public')));
 if (bot && USE_WEBHOOK) app.post(`/tg/${HOOK_SECRET}`, webhookCallback(bot, 'express', { secretToken: HOOK_SECRET }));
 app.get('/health', (req, res) => res.send('ok'));
 
-app.get('/api/config', (req, res) => res.json({ demo: DEMO, aiEnabled, tones: TONES }));
+app.get('/api/config', (req, res) => res.json({ demo: DEMO, aiEnabled, tones: TONES, stages: STAGES, topics: TOPICS }));
 
 app.use('/api', auth);
 
@@ -226,6 +265,8 @@ app.get('/api/state', (req, res) => {
     pendingReply,
     history: answered.map((q) => publicQ(q, users)).reverse(),
     daily: dailyView(pair, me.id, partner),
+    talk: talkView(pair, me.id, partner),
+    lastTalk: lastTalkView(pair, me.id, partner),
     letters: S.pairLetters(pair.id).map((l) => ({ ...l, fromName: users[l.from]?.name })).reverse(),
     insights: { me: insights(pair.id, me.id), partner: partner ? insights(pair.id, partner.id) : null },
   });
@@ -270,6 +311,12 @@ app.post('/api/pair/leave', (req, res) => {
   res.json({ ok: true });
 });
 
+function applyFeel(pair, uid, f) {
+  if (!pair.talk || !['better', 'same', 'worse'].includes(f)) return;
+  T.feel(pair.talk, uid, f);
+  S.touch();
+}
+
 function requireTurn(req, res) {
   const pair = req.user.pairId && S.getPair(req.user.pairId);
   const partnerId = pair && S.partnerOf(pair, req.user.id);
@@ -281,7 +328,11 @@ function requireTurn(req, res) {
 app.get('/api/library', (req, res) => {
   const tone = req.query.tone in TONES ? req.query.tone : 'gentle';
   const asked = new Set(req.user.pairId ? S.pairQuestions(req.user.pairId).map((q) => q.text) : []);
-  res.json({ questions: LIBRARY[tone].map((text) => ({ text, asked: asked.has(text) })) });
+  const talk = req.user.pairId && S.getPair(req.user.pairId)?.talk;
+  // Во время разговора сначала идут вопросы текущей ступени.
+  const stageQs = talk ? STAGE_Q[talk.stage][tone].map((text) => ({ text, asked: asked.has(text), stage: talk.stage })) : [];
+  const rest = LIBRARY[tone].filter((t) => !stageQs.some((x) => x.text === t)).map((text) => ({ text, asked: asked.has(text) }));
+  res.json({ questions: [...stageQs, ...rest] });
 });
 
 app.post('/api/ai/suggest', async (req, res) => {
@@ -290,7 +341,9 @@ app.post('/api/ai/suggest', async (req, res) => {
   const tone = req.body.tone in TONES ? req.body.tone : ctx.partner.tone || 'gentle';
   const users = { [req.user.id]: req.user, [ctx.partner.id]: ctx.partner };
   const history = S.pairQuestions(ctx.pair.id).map((q) => ({ ...q, fromName: users[q.from]?.name }));
-  const out = await suggestQuestions({ tone, asker: req.user, receiver: ctx.partner, history });
+  const talk = ctx.pair.talk;
+  const stage = talk ? { ...STAGES[talk.stage], topic: TOPICS[talk.topic], hot: Math.max(0, ...Object.values(talk.temps)) >= 4 } : null;
+  const out = await suggestQuestions({ tone, asker: req.user, receiver: ctx.partner, history, stage });
   res.json(out);
 });
 
@@ -324,6 +377,7 @@ app.post('/api/answer', (req, res) => {
     const other = open.from === req.user.id ? open.to : open.from;
     const names = { [req.user.id]: req.user.name, [other]: S.getUser(other)?.name };
     const { done } = S.answerTogether(open.id, req.user.id, text, rating, names);
+    applyFeel(pair, req.user.id, req.body.feel);
     if (done) {
       notify(other, `👫 Ответы открылись! Посмотрите, что ответил(а) ${req.user.name}.`);
     } else {
@@ -337,6 +391,7 @@ app.post('/api/answer', (req, res) => {
   if (!answer) return res.status(400).json({ error: 'Напишите ответ' });
   const rating = ['love', 'like', 'meh'].includes(req.body.rating) ? req.body.rating : null;
   S.answerQuestion(open.id, answer, rating);
+  applyFeel(pair, req.user.id, req.body.feel);
   notify(open.from, `✨ ${req.user.name} ответил(а) вам. Откройте игру, чтобы прочитать.`);
   res.json({ ok: true });
 });
@@ -368,6 +423,66 @@ app.post('/api/daily', (req, res) => {
   res.json({ ok: true, both });
 });
 
+function talkCtx(req, res) {
+  const pair = req.user.pairId && S.getPair(req.user.pairId);
+  const partnerId = pair && S.partnerOf(pair, req.user.id);
+  if (!partnerId) { res.status(400).json({ error: 'Сначала пригласите партнёра' }); return null; }
+  return { pair, partnerId };
+}
+const temp = (x) => (Number.isInteger(x) && x >= 1 && x <= 5 ? x : null);
+
+app.post('/api/talk/start', (req, res) => {
+  const c = talkCtx(req, res); if (!c) return;
+  if (c.pair.talk) return res.status(400).json({ error: 'Разговор уже идёт' });
+  const topic = req.body.topic in TOPICS ? req.body.topic : 'other';
+  const t = temp(req.body.temp);
+  if (!t) return res.status(400).json({ error: 'Отметьте, насколько сейчас горячо' });
+  T.startTalk(c.pair, req.user.id, topic, t, S.pairQuestions(c.pair.id).length);
+  S.touch();
+  notify(c.partnerId, `🕊 ${req.user.name} начал(а) разговор: «${TOPICS[topic]}». Отметьте, насколько вам сейчас горячо, и начнём с малого.`, 'Присоединиться 🕊');
+  res.json({ ok: true });
+});
+
+app.post('/api/talk/temp', (req, res) => {
+  const c = talkCtx(req, res); if (!c) return;
+  const t = temp(req.body.temp);
+  if (!c.pair.talk || !t) return res.status(400).json({ error: 'Нет разговора' });
+  T.setTemp(c.pair.talk, req.user.id, t);
+  S.touch();
+  res.json({ ok: true });
+});
+
+app.post('/api/talk/finish', (req, res) => {
+  const c = talkCtx(req, res); if (!c) return;
+  if (!c.pair.talk) return res.status(400).json({ error: 'Нет разговора' });
+  const heard = String(req.body.heard || '').trim().slice(0, 1000);
+  const step = String(req.body.step || '').trim().slice(0, 500);
+  if (!heard) return res.status(400).json({ error: 'Напишите, что вы услышали' });
+  const done = T.finish(c.pair, req.user.id, heard, step, S.pairQuestions(c.pair.id).length);
+  S.touch();
+  notify(c.partnerId, done
+    ? '🌿 Разговор завершён. Откройте итог: что вы услышали друг от друга и ваш маленький шаг.'
+    : `🌿 ${req.user.name} подводит итог разговора и написал(а), что услышал(а). Напишите и вы, чтобы увидеть итог.`, 'Открыть итог 🌿');
+  res.json({ ok: true, done });
+});
+
+app.post('/api/talk/cancel', (req, res) => {
+  const c = talkCtx(req, res); if (!c) return;
+  c.pair.talk = null;
+  S.touch();
+  res.json({ ok: true });
+});
+
+app.post('/api/talk/check', (req, res) => {
+  const c = talkCtx(req, res); if (!c) return;
+  const t = c.pair.talks?.find((x) => x.id === req.body.id);
+  const v = ['yes', 'partly', 'no'].includes(req.body.value) ? req.body.value : null;
+  if (!t || !v) return res.status(400).json({ error: 'Нет разговора' });
+  t.checks = { ...(t.checks || {}), [req.user.id]: v };
+  S.touch();
+  res.json({ ok: true });
+});
+
 // Письмо партнёру: личное послание в любой момент, например в конце разговора.
 app.post('/api/letter', (req, res) => {
   const pair = req.user.pairId && S.getPair(req.user.pairId);
@@ -387,7 +502,7 @@ try {
   delete process.env.DATABASE_URL;
   await S.initStore();
 }
-setTimeout(dailyTick, 5000);
+setTimeout(() => { dailyTick(); talkTick(); }, 5000);
 app.listen(PORT, () => {
   console.log(`Мини-приложение: http://localhost:${PORT}  (демо-режим: ${DEMO ? 'да' : 'нет'}, ИИ: ${aiEnabled ? 'Claude' : 'библиотека'})`);
 });

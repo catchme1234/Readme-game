@@ -102,3 +102,17 @@ nav#tabs button.active { color: var(--accent); }
 .streak span { font-weight: 700; font-size: 20px; }
 nav#tabs button.dot { position: relative; }
 nav#tabs button.dot::after { content: ""; position: absolute; top: 2px; right: 28%; width: 8px; height: 8px; border-radius: 50%; background: #f2b33d; }
+
+/* Разговор по ступеням */
+.card.talk { border: 1px solid color-mix(in srgb, #3e8fb0 30%, transparent); background: color-mix(in srgb, #3e8fb0 7%, var(--card)); }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 10px; }
+.steps i { height: 6px; border-radius: 6px; background: var(--line); }
+.steps i.d { background: #3e8fb0; }
+.steps i.now { background: #e8964a; }
+.temps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.temps button { margin: 0; padding: 10px 0; background: var(--bg2); color: var(--text); border: 2px solid transparent; }
+.temps button.on { color: #fff; border-color: transparent; }
+.temps .t1.on { background: #3e8fb0; } .temps .t2.on { background: #7aa7a0; } .temps .t3.on { background: #e8964a; }
+.temps .t4.on { background: #e0704a; } .temps .t5.on { background: #d9534a; }
+.sep { height: 1px; background: var(--line); margin: 12px 0; }
+a[data-retemp] { color: var(--accent); }

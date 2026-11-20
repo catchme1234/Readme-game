@@ -3,7 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { LIBRARY, TONES } from './library.js';
+import { LIBRARY, TONES, STAGE_Q } from './library.js';
 
 const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 export const aiEnabled = Boolean(client);
@@ -29,7 +29,11 @@ const SYSTEM = `Ты бережный помощник для пары, кото
 
 Верни ровно 3 разных вопроса на русском языке.`;
 
-function fallback(tone, asked) {
+function fallback(tone, asked, stage) {
+  if (stage) {
+    const st = STAGE_Q[stage.n][tone].filter((q) => !asked.includes(q));
+    if (st.length >= 3) return [...st].sort(() => Math.random() - 0.5).slice(0, 3);
+  }
   const pool = LIBRARY[tone].filter((q) => !asked.includes(q));
   const src = pool.length >= 3 ? pool : LIBRARY[tone];
   return [...src].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -42,9 +46,9 @@ function fallback(tone, asked) {
  * @param {object} p.receiver       { name, situation, tone }
  * @param {Array}  p.history        [{from, text, answer, rating, tone}]
  */
-export async function suggestQuestions({ tone, asker, receiver, history }) {
+export async function suggestQuestions({ tone, asker, receiver, history, stage }) {
   const asked = history.map((h) => h.text);
-  if (!client) return { questions: fallback(tone, asked), source: 'library' };
+  if (!client) return { questions: fallback(tone, asked, stage), source: 'library' };
 
   const hist = history.slice(-12).map((h) =>
     `- ${h.fromName} спросил(а): «${h.text}» [тон: ${TONES[h.tone]?.label || '—'}]` +
@@ -71,7 +75,7 @@ ${receiver.situation || '(не заполнено)'}
 История вопросов и ответов (ответы оба партнёра уже видели):
 ${hist}
 
-Предложи 3 вопроса, которые ${asker.name} может задать ${receiver.name}.`;
+${stage ? `Пара сейчас в разговоре на тему «${stage.topic}», ступень ${stage.n} из 5: «${stage.label}» (${stage.hint}). Вопросы должны подходить этой ступени.${stage.hot ? ' Кому-то из них сейчас очень горячо: никаких глубоких и острых вопросов, только бережные.' : ''}\n\n` : ''}Предложи 3 вопроса, которые ${asker.name} может задать ${receiver.name}: первый самый бережный, второй самый точный, третий чуть смелее.`;
 
   try {
     const res = await client.messages.parse({
@@ -82,10 +86,10 @@ ${hist}
       messages: [{ role: 'user', content }],
     });
     const qs = res.stop_reason === 'refusal' ? null : res.parsed_output?.questions;
-    if (!qs?.length) return { questions: fallback(tone, asked), source: 'library' };
+    if (!qs?.length) return { questions: fallback(tone, asked, stage), source: 'library' };
     return { questions: qs.slice(0, 3), source: 'ai' };
   } catch (e) {
     console.error('AI error:', e?.status, e?.message);
-    return { questions: fallback(tone, asked), source: 'library' };
+    return { questions: fallback(tone, asked, stage), source: 'library' };
   }
 }
