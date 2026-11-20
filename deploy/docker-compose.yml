@@ -1,0 +1,15 @@
+# Игра на своём сервере. Отдельный проект Docker «para-game»:
+# не публикует порты наружу и не пересекается с другими сервисами на сервере.
+name: para-game
+services:
+  app:
+    build: ..
+    restart: always
+    env_file: ../.env
+    environment:
+      TUNNEL_METRICS: http://tunnel:2000
+  tunnel:
+    # Бесплатный HTTPS-адрес *.trycloudflare.com без домена и регистрации.
+    image: cloudflare/cloudflared:latest
+    restart: always
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://app:3000

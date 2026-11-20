@@ -9,7 +9,7 @@ import { suggestQuestions, aiEnabled } from './ai.js';
 const PORT = process.env.PORT || 3000;
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 // На Render адрес сервиса приходит в RENDER_EXTERNAL_URL автоматически.
-const WEBAPP_URL = process.env.WEBAPP_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+let WEBAPP_URL = process.env.WEBAPP_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 // Вебхук нужен на хостинге, который «засыпает»: сообщение в Telegram будит сервер.
 const USE_WEBHOOK = Boolean(process.env.RENDER_EXTERNAL_URL || process.env.USE_WEBHOOK === '1');
 const HOOK_SECRET = crypto.createHash('sha256').update('hook:' + (process.env.BOT_TOKEN || '')).digest('hex').slice(0, 32);
@@ -40,6 +40,8 @@ if (BOT_TOKEN) {
   bot.catch((e) => console.error('Bot error:', e.message));
   bot.init().then(async () => {
     botUsername = bot.botInfo.username;
+    // На своём сервере без домена адрес даёт туннель Cloudflare (см. deploy/).
+    if (process.env.TUNNEL_METRICS && !process.env.WEBAPP_URL) WEBAPP_URL = await tunnelUrl(process.env.TUNNEL_METRICS);
     // Кнопка «Играть» слева от поля ввода в чате с ботом.
     if (WEBAPP_URL.startsWith('https://')) {
       bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Играть', web_app: { url: WEBAPP_URL } } })
@@ -54,6 +56,20 @@ if (BOT_TOKEN) {
       console.log(`Бот @${botUsername} запущен`);
     }
   });
+}
+
+async function tunnelUrl(metrics) {
+  for (;;) {
+    try {
+      const r = await fetch(`${metrics}/quicktunnel`);
+      const { hostname } = await r.json();
+      if (hostname) {
+        console.log(`Адрес мини-приложения: https://${hostname}`);
+        return `https://${hostname}`;
+      }
+    } catch {}
+    await new Promise((res) => setTimeout(res, 2000));
+  }
 }
 
 async function notify(uid, text) {
