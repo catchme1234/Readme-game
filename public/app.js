@@ -11,7 +11,7 @@ let lastJson = '';
 let tab = 'game';
 let demoUser = localStorageGet('demoUser') || 'demoA';
 // Черновики живут здесь, чтобы обновления не стирали набранный текст.
-const freshCompose = (mode = 'own') => ({ mode, tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own', why: '' });
+const freshCompose = (mode = 'own') => ({ mode, tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own', why: '', together: false });
 let compose = freshCompose();
 let replyDraft = '';
 let letterDraft = null;   // null — форма письма закрыта
@@ -42,7 +42,7 @@ function haptic(type = 'light') { try { tg?.HapticFeedback?.impactOccurred(type)
 
 const toneLabel = (t) => (config.tones[t] ? `${config.tones[t].emoji} ${config.tones[t].label}` : 'не выбран');
 const srcLabel = { own: '✍️ свой', library: '📚 из библиотеки', ai: '✨ от ИИ' };
-const srcBadge = (q) => (q.kind === 'say' ? '💬 сказал(а)' : q.edited ? '✍️ своими словами' : srcLabel[q.source]);
+const srcBadge = (q) => (q.kind === 'say' ? '💬 сказал(а)' : q.kind === 'together' ? '👫 вдвоём' : q.edited ? '✍️ своими словами' : srcLabel[q.source]);
 const SAY_STARTERS = ['Мне важно…', 'Мне жаль, что…', 'Я ценю, что ты…', 'Я боюсь, что…', 'Я прошу…', 'Мне не хватает…'];
 
 // Посыл партнёра: его собственные слова, которые видны перед вопросами.
@@ -191,6 +191,7 @@ function insightBlock(i, who) {
 
 function renderGame() {
   const o = S.open;
+  if (o && o.kind === 'together') return renderTogether(o);
   if (o && o.to === S.me.id) return renderAnswer(o);
   if (o && o.from === S.me.id) {
     $app.innerHTML = `
@@ -279,9 +280,15 @@ function pickedEditor() {
     <textarea id="qtext">${esc(compose.text)}</textarea>${whyField()}<button id="send">Отправить вопрос</button>`;
 }
 
+// «Отвечаем вдвоём»: переключатель под вопросом.
+function togetherToggle() {
+  return `<label class="toggle"><input type="checkbox" id="together" ${compose.together ? 'checked' : ''} />
+    <span><b>👫 Ответим оба</b><br><span class="muted">Вы тоже отвечаете на этот вопрос. Ответы откроются одновременно, когда ответите оба, так никто не подстраивается.</span></span></label>`;
+}
+
 // «Зачем я спрашиваю»: одна строка от себя, партнёр читает её над вопросом.
 function whyField() {
-  return `<div class="why"><label for="qwhy">Зачем я спрашиваю <span class="muted">(увидит ${esc(S.partner.name)}, можно пропустить)</span></label>
+  return `${togetherToggle()}<div class="why"><label for="qwhy">Зачем я спрашиваю <span class="muted">(увидит ${esc(S.partner.name)}, можно пропустить)</span></label>
     <input id="qwhy" maxlength="300" placeholder="Например: хочу понять тебя, а не спорить" value="${esc(compose.why)}" /></div>`;
 }
 
@@ -310,6 +317,8 @@ function bindCompose() {
   }));
   const ta = document.getElementById('qtext');
   if (ta) ta.oninput = () => (compose.text = ta.value);
+  const tg2 = document.getElementById('together');
+  if (tg2) tg2.onchange = () => (compose.together = tg2.checked);
   const why = document.getElementById('qwhy');
   if (why) why.oninput = () => (compose.why = why.value);
   $app.querySelectorAll('[data-starter]').forEach((b) => (b.onclick = () => {
@@ -334,8 +343,8 @@ function bindCompose() {
     const edited = Boolean(compose.picked) && compose.text.trim() !== compose.picked.trim();
     try {
       send.disabled = true;
-      await api('/api/question', { kind: m === 'say' ? 'say' : 'ask', text: compose.text, tone: compose.tone, source, why: compose.why, edited });
-      haptic('medium'); toast(m === 'say' ? 'Отправлено 💬' : 'Вопрос отправлен 💌');
+      await api('/api/question', { kind: m === 'say' ? 'say' : compose.together ? 'together' : 'ask', text: compose.text, tone: compose.tone, source, why: compose.why, edited });
+      haptic('medium'); toast(m === 'say' ? 'Отправлено 💬' : compose.together ? 'Вопрос отправлен. Теперь ответьте и вы 👫' : 'Вопрос отправлен 💌');
       compose = freshCompose(m === 'say' ? 'own' : m);
       refresh(true);
     } catch (e) { toast(e.message); send.disabled = false; }
@@ -366,6 +375,45 @@ function renderAnswer(o) {
     try {
       await api('/api/answer', { answer: answer.text, rating: answer.rating });
       answer = { text: '', rating: null }; haptic('medium'); toast('Ответ отправлен. Теперь ваш ход ✨');
+      refresh(true);
+    } catch (e) { toast(e.message); }
+  };
+}
+
+// Вопрос вдвоём: каждый отвечает, не видя ответа другого. Потом ответы открываются вместе.
+function renderTogether(o) {
+  const mine = o.answeredBy.includes(S.me.id);
+  const theirs = o.answeredBy.includes(o.from === S.me.id ? o.to : o.from);
+  const head = `
+    ${o.why ? `<div class="card warm"><p class="muted">${o.from === S.me.id ? 'Вы спрашиваете' : `${esc(o.fromName)} спрашивает`}, потому что:</p><div class="msgtext">${esc(o.why)}</div></div>` : ''}
+    <div class="card">
+      <p class="muted">👫 Отвечаем вдвоём${o.from === S.me.id ? '' : `, вопрос от ${esc(o.fromName)}`}:</p>
+      <div class="question">${esc(o.text)}</div>
+      <div class="pair-status"><span class="${mine ? 'ok' : ''}">${mine ? '✓' : '…'} Вы</span><span class="${theirs ? 'ok' : ''}">${theirs ? '✓' : '…'} ${esc(S.partner.name)}</span></div>
+    </div>`;
+  if (mine) {
+    $app.innerHTML = `${head}<div class="card hero"><div class="big">🙈</div><h1>Ваш ответ спрятан</h1>
+      <p class="muted">Ответы откроются одновременно, когда ответит ${esc(S.partner.name)}. Мы пришлём уведомление.</p></div>`;
+    return;
+  }
+  const canRate = o.to === S.me.id;
+  $app.innerHTML = `${head}
+    <div class="card">
+      <h2>Ваш ответ</h2>
+      <p class="muted">${theirs ? `${esc(S.partner.name)} уже ответил(а). Ответьте, и вы увидите ответы друг друга.` : `${esc(S.partner.name)} не увидит ваш ответ, пока не ответит сам(а).`}</p>
+      <textarea id="atext" placeholder="Ответьте честно, как чувствуете">${esc(answer.text)}</textarea>
+      ${canRate ? `<p class="muted" style="margin-top:12px">Как вам этот вопрос?</p>
+      <div class="rating">${Object.entries(rateLabel).map(([k, l]) => `<button data-rate="${k}" class="${answer.rating === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
+      <button id="send" style="margin-top:10px">${theirs ? 'Ответить и открыть ответы' : 'Ответить'}</button>
+    </div>`;
+  const ta = document.getElementById('atext');
+  ta.oninput = () => (answer.text = ta.value);
+  $app.querySelectorAll('[data-rate]').forEach((b) => (b.onclick = () => { answer.rating = b.dataset.rate; haptic(); renderTogether(o); }));
+  document.getElementById('send').onclick = async () => {
+    try {
+      const r = await api('/api/answer', { answer: answer.text, rating: answer.rating });
+      answer = { text: '', rating: null }; haptic('medium');
+      if (r.done) { tab = 'history'; toast('Ответы открылись 👫'); } else toast('Ответ спрятан до ответа партнёра 🙈');
       refresh(true);
     } catch (e) { toast(e.message); }
   };
@@ -432,10 +480,12 @@ function renderHistory() {
   const items = [
     ...S.history.map((q) => ({ t: q.answeredAt || q.createdAt, html: `
     <div class="card hist">
-      <p class="muted">${who(q.from)} ${q.kind === 'say' ? 'сказали' : 'спросили'} · ${date(q.createdAt)}</p>
+      <p class="muted">${who(q.from)} ${q.kind === 'say' ? 'сказали' : q.kind === 'together' ? 'спросили обоих' : 'спросили'} · ${date(q.createdAt)}</p>
       ${q.why ? `<p class="muted">Зачем: ${esc(q.why)}</p>` : ''}
       <b>${esc(q.text)}</b>
-      <div class="a"><span class="muted">${who(q.to)}:</span> ${esc(q.answer)}</div>
+      ${q.answers
+        ? `<div class="duo">${[q.from, q.to].map((m) => `<div><span class="muted">${who(m)}</span>${esc(q.answers[m])}</div>`).join('')}</div>`
+        : `<div class="a"><span class="muted">${who(q.to)}:</span> ${esc(q.answer)}</div>`}
       ${q.reply ? `<div class="a r"><span class="muted">${who(q.from)}:</span> ${esc(q.reply)}</div>` : ''}
       <p style="margin-top:8px">${q.kind === 'say' ? '' : `<span class="badge">${toneLabel(q.tone)}</span>`}<span class="badge">${srcBadge(q)}</span>${q.rating ? `<span class="badge">${rateLabel[q.rating]}</span>` : ''}</p>
     </div>` })),

@@ -139,3 +139,20 @@ export function addLetter(l) {
   save();
   return full;
 }
+
+// «Отвечаем вдвоём»: оба отвечают на один вопрос, ответы открываются, только когда ответили оба.
+export function answerTogether(qid, uid, text, rating, names) {
+  const q = db.questions.find((x) => x.id === qid);
+  q.answers ??= {};
+  q.answers[uid] = text;
+  if (uid === q.to && rating) q.rating = rating;
+  const done = [q.from, q.to].every((m) => q.answers[m] != null);
+  if (done) {
+    q.answer = [q.from, q.to].map((m) => `${names[m] || ''}: ${q.answers[m]}`).join('\n');
+    q.answeredAt = Date.now();
+    q.replyDone = true;
+    db.pairs[q.pairId].turn = q.to;
+  }
+  save();
+  return { q, done };
+}
