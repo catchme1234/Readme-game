@@ -16,6 +16,7 @@ let compose = freshCompose();
 let replyDraft = '';
 let letterDraft = null;   // null — форма письма закрыта
 let msgDraft = null;
+let dailyDraft = '';
 let answer = { text: '', rating: null };
 let sideDraft = null;
 let library = { tone: null, items: [] };
@@ -98,7 +99,9 @@ function render() {
   if (!S.pair) return renderStart();
   if (!S.partner) return renderInvite();
   if (!S.me.tone) return renderTonePick(true);
-  ({ game: renderGame, side: renderSide, tone: () => renderTonePick(false), history: renderHistory }[tab])();
+  const dot = document.querySelector('#tabs [data-tab="daily"]');
+  if (dot) dot.classList.toggle('dot', Boolean(S.daily && S.daily.mine == null));
+  ({ game: renderGame, daily: renderDaily, side: renderSide, tone: () => renderTonePick(false), history: renderHistory }[tab])();
 }
 
 function renderStart() {
@@ -199,16 +202,64 @@ function renderGame() {
         <p class="muted">Мы пришлём уведомление в Telegram, когда ответ придёт.</p></div>
       <div class="card">${o.kind === 'say' ? '<p class="muted">Вы сказали:</p>' : `<span class="badge">${toneLabel(o.tone)}</span><span class="badge">${srcBadge(o)}</span>`}
         <div class="question">${esc(o.text)}</div>${o.why ? `<p class="muted">Зачем: ${esc(o.why)}</p>` : ''}</div>
-      ${messageHint()}${sideHint()}`;
+      ${dailyHint()}${messageHint()}${sideHint()}`;
     return;
   }
   if (!S.pair.myTurn) {
     $app.innerHTML = `${replyCard()}<div class="card hero"><div class="big">🤍</div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
-      <p class="muted">Скоро вам придёт вопрос.</p></div>${partnerMessageCard()}${messageHint()}${sideHint()}`;
+      <p class="muted">Скоро вам придёт вопрос.</p></div>${dailyHint()}${partnerMessageCard()}${messageHint()}${sideHint()}`;
     bindReply();
     return;
   }
   renderCompose();
+}
+
+function dailyHint() {
+  const d = S.daily;
+  if (!d || d.mine != null) return '';
+  return `<div class="card sun"><p class="muted">☀️ Вопрос дня${d.partnerAnswered ? ` · ${esc(S.partner.name)} уже ответил(а)` : ''}</p>
+    <b>${esc(d.text)}</b><button class="ghost" data-go="daily" style="margin-top:10px">Ответить</button></div>`;
+}
+
+function renderDaily() {
+  const d = S.daily;
+  const names = { [S.me.id]: 'Вы' };
+  const duo = (answers) => `<div class="duo">${Object.entries(answers).sort(([a]) => (a === S.me.id ? -1 : 1))
+    .map(([m, t]) => `<div><span class="muted">${names[m] || esc(S.partner.name)}</span>${esc(t)}</div>`).join('')}</div>`;
+  let body;
+  if (d.answers) body = `<p class="muted" style="margin-top:10px">Ответы открылись:</p>${duo(d.answers)}`;
+  else if (d.mine != null) body = `<div class="pair-status" style="margin-top:10px"><span class="ok">✓ Вы</span><span>… ${esc(S.partner.name)}</span></div>
+    <p class="muted" style="margin-top:10px">🙈 Ваш ответ спрятан. Он откроется, когда ответит ${esc(S.partner.name)}.</p>`;
+  else body = `<p class="muted" style="margin-top:6px">${d.partnerAnswered ? `${esc(S.partner.name)} уже ответил(а). Ответьте, и вы увидите ответы друг друга.` : 'Ответы откроются, когда ответите оба.'}</p>
+    <textarea id="dtext" maxlength="1000" placeholder="Ваш ответ">${esc(dailyDraft)}</textarea>
+    <button id="dsend" style="margin-top:10px">${d.partnerAnswered ? 'Ответить и открыть' : 'Ответить'}</button>`;
+  const streak = d.streak
+    ? `<div class="streak"><span>🔥 ${d.streak}</span> ${plural(d.streak, 'день', 'дня', 'дней')} подряд вы отвечаете вместе</div>`
+    : '<div class="streak muted">Отвечайте оба каждый день, и здесь появится ваша серия 🔥</div>';
+  $app.innerHTML = `
+    <div class="card sun">
+      <p class="muted">☀️ Вопрос дня · ${new Date(d.date + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</p>
+      <div class="question">${esc(d.text)}</div>
+      ${body}
+    </div>
+    ${streak}
+    ${d.past.length ? `<h2 style="padding:8px 4px 0">Прошлые дни</h2>${d.past.map((x) => `
+      <div class="card hist"><p class="muted">${new Date(x.date + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</p>
+        <b>${esc(x.text)}</b>${x.answers ? duo(x.answers) : '<p class="muted" style="margin-top:6px">Ответил только один из вас.</p>'}</div>`).join('')}` : ''}
+    <p class="muted center" style="padding:12px 0">Новый вопрос приходит каждое утро в Telegram.</p>`;
+  const ta = document.getElementById('dtext');
+  if (ta) {
+    ta.oninput = () => (dailyDraft = ta.value);
+    document.getElementById('dsend').onclick = async () => {
+      try { const r = await api('/api/daily', { answer: dailyDraft }); dailyDraft = ''; haptic('medium'); toast(r.both ? 'Ответы открылись ☀️' : 'Ответ спрятан до ответа партнёра 🙈'); refresh(true); }
+      catch (e) { toast(e.message); }
+    };
+  }
+}
+
+function plural(n, one, few, many) {
+  const a = n % 10, b = n % 100;
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many;
 }
 
 function messageHint() {
@@ -536,7 +587,7 @@ $app.addEventListener('click', (e) => {
       const b = e.target.closest('[data-demo]'); if (!b) return;
       demoUser = b.dataset.demo; localStorageSet('demoUser', demoUser); mark();
       compose = freshCompose();
-      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game';
+      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; dailyDraft = ''; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game';
       refresh(true);
     };
   }

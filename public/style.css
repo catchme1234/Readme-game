@@ -95,3 +95,10 @@ nav#tabs button.active { color: var(--accent); }
 .pair-status span.ok { color: var(--text); background: color-mix(in srgb, var(--accent) 14%, var(--card)); font-weight: 600; }
 .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .duo > div { background: var(--bg2); border-radius: 12px; padding: 10px; display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+
+/* Вопрос дня */
+.card.sun { background: color-mix(in srgb, #f2b33d 12%, var(--card)); border: 1px solid color-mix(in srgb, #f2b33d 35%, transparent); }
+.streak { text-align: center; padding: 6px 12px 14px; font-size: 15px; }
+.streak span { font-weight: 700; font-size: 20px; }
+nav#tabs button.dot { position: relative; }
+nav#tabs button.dot::after { content: ""; position: absolute; top: 2px; right: 28%; width: 8px; height: 8px; border-radius: 50%; background: #f2b33d; }

@@ -5,6 +5,7 @@ import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
 import * as S from './store.js';
 import { LIBRARY, TONES } from './library.js';
 import { suggestQuestions, aiEnabled } from './ai.js';
+import * as D from './daily.js';
 
 const PORT = process.env.PORT || 3000;
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
@@ -75,11 +76,11 @@ async function tunnelUrl(metrics) {
   }
 }
 
-async function notify(uid, text) {
+async function notify(uid, text, button = 'Открыть 💞') {
   if (!bot || String(uid).startsWith('demo')) return;
   try {
     await bot.api.sendMessage(uid, text, {
-      reply_markup: new InlineKeyboard().webApp('Открыть 💞', WEBAPP_URL),
+      reply_markup: new InlineKeyboard().webApp(button, WEBAPP_URL),
     });
   } catch (e) {
     console.error('notify failed:', e.message);
@@ -150,6 +151,39 @@ function publicQ(q, users) {
   };
 }
 
+// ---------- Вопрос дня ----------
+function dailyView(pair, uid, partner) {
+  if (!partner) return null;
+  const today = D.localNow().date;
+  const d = D.ensureToday(pair, today);
+  const both = pair.members.every((m) => d.answers[m] != null);
+  const reveal = (x) => ({ date: x.date, text: x.text, answers: pair.members.every((m) => x.answers[m] != null) ? x.answers : null });
+  return {
+    date: d.date, text: d.text,
+    mine: d.answers[uid] ?? null,
+    partnerAnswered: d.answers[partner.id] != null,
+    // Ответ партнёра виден, только когда ответили оба.
+    answers: both ? d.answers : null,
+    streak: D.currentStreak(pair, today),
+    past: (pair.dailyHistory || []).slice(0, 14).map(reveal),
+  };
+}
+
+// Раз в 10 минут: после DAILY_HOUR присылаем паре вопрос дня (один раз в день).
+function dailyTick() {
+  const { date, hour } = D.localNow();
+  if (hour < D.DAILY_HOUR) return;
+  for (const pair of S.allPairs()) {
+    if (pair.members.length !== 2) continue;
+    const d = D.ensureToday(pair, date);
+    if (d.sent) continue;
+    d.sent = true;
+    for (const m of pair.members) notify(m, `☀️ Вопрос дня для вас двоих:\n\n«${d.text}»\n\nОтветы откроются, когда ответите оба.`, 'Ответить ☀️');
+  }
+  S.touch();
+}
+setInterval(dailyTick, 10 * 60 * 1000);
+
 // ---------- API ----------
 const app = express();
 app.use(express.json({ limit: '50kb' }));
@@ -191,6 +225,7 @@ app.get('/api/state', (req, res) => {
     open: open ? publicQ(open, users) : null,
     pendingReply,
     history: answered.map((q) => publicQ(q, users)).reverse(),
+    daily: dailyView(pair, me.id, partner),
     letters: S.pairLetters(pair.id).map((l) => ({ ...l, fromName: users[l.from]?.name })).reverse(),
     insights: { me: insights(pair.id, me.id), partner: partner ? insights(pair.id, partner.id) : null },
   });
@@ -317,6 +352,22 @@ app.post('/api/reply', (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/daily', (req, res) => {
+  const pair = req.user.pairId && S.getPair(req.user.pairId);
+  const partnerId = pair && S.partnerOf(pair, req.user.id);
+  if (!partnerId) return res.status(400).json({ error: 'Сначала пригласите партнёра' });
+  const text = String(req.body.answer || '').trim().slice(0, 1000);
+  if (!text) return res.status(400).json({ error: 'Напишите ответ' });
+  const d = D.ensureToday(pair);
+  if (d.answers[req.user.id] != null) return res.status(400).json({ error: 'Вы уже ответили сегодня' });
+  const both = D.answerDaily(pair, req.user.id, text);
+  S.touch();
+  notify(partnerId, both
+    ? `☀️ Ответы на вопрос дня открылись! Посмотрите, что ответил(а) ${req.user.name}.`
+    : `☀️ ${req.user.name} ответил(а) на вопрос дня. Ответьте и вы, чтобы увидеть ответы друг друга.`, 'Открыть ☀️');
+  res.json({ ok: true, both });
+});
+
 // Письмо партнёру: личное послание в любой момент, например в конце разговора.
 app.post('/api/letter', (req, res) => {
   const pair = req.user.pairId && S.getPair(req.user.pairId);
@@ -336,6 +387,7 @@ try {
   delete process.env.DATABASE_URL;
   await S.initStore();
 }
+setTimeout(dailyTick, 5000);
 app.listen(PORT, () => {
   console.log(`Мини-приложение: http://localhost:${PORT}  (демо-режим: ${DEMO ? 'да' : 'нет'}, ИИ: ${aiEnabled ? 'Claude' : 'библиотека'})`);
 });

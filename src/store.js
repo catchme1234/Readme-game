@@ -156,3 +156,7 @@ export function answerTogether(qid, uid, text, rating, names) {
   save();
   return { q, done };
 }
+
+// Сохранить изменения пары, сделанные снаружи (например, вопрос дня).
+export function touch() { save(); }
+export const allPairs = () => Object.values(db.pairs);
