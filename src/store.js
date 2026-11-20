@@ -164,3 +164,17 @@ export function touch() { save(); }
 export const allPairs = () => Object.values(db.pairs);
 
 export const findQuestion = (qid) => db.questions.find((x) => x.id === qid) || null;
+
+// Счётчики воронки по дням: { 'YYYY-MM-DD': { start: 3, pair_created: 1, … } }. Без личных данных.
+export function track(name) {
+  db.stats ??= {};
+  const day = new Date().toISOString().slice(0, 10);
+  db.stats[day] ??= {};
+  db.stats[day][name] = (db.stats[day][name] || 0) + 1;
+  save();
+}
+export function stats() {
+  const total = {};
+  for (const d of Object.values(db.stats || {})) for (const [k, v] of Object.entries(d)) total[k] = (total[k] || 0) + v;
+  return { total, byDay: db.stats || {} };
+}
