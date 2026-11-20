@@ -221,7 +221,7 @@ function render() {
   if (dot) dot.classList.toggle('dot', Boolean(S.daily && S.daily.mine == null));
   if (S.me.safety) return renderSafety();
   const note = document.getElementById('brand-note');
-  if (note) note.textContent = !S.pair || !S.partner ? 'для двоих' : ({ game: 'ваш разговор', daily: 'вопрос дня', side: 'мои слова', tone: 'что откликается', history: 'история' }[tab] || '');
+  if (note) note.textContent = !S.pair || !S.partner ? 'прочитай меня' : ({ game: 'ваш разговор', daily: 'страница дня', side: 'мои слова', tone: 'что откликается', history: 'наша книга' }[tab] || '');
   if (solo && tab === 'game') return renderSolo();
   ({ game: renderGame, daily: renderDaily, side: renderSide, tone: () => renderTonePick(false), history: renderHistory }[tab])();
   if (tab === 'game') decorateGame();
@@ -232,10 +232,10 @@ function renderStart() {
   const join = new URLSearchParams(location.search).get('join') || '';
   $app.innerHTML = `
     <div class="welcome">
-      <p class="eyebrow">Место для диалога</p>
+      <p class="eyebrow">Две страницы одной книги</p>
       <img class="art" src="brand/artwork.jpg" alt="Раскрытая книга со светом между страниц" />
       <h1>Начать разговор<br>можно мягко.</h1>
-      <p class="lead">Когда поссорились и слова не находятся, ReadMe помогает начать с малого: дать знак одной кнопкой, остыть и поговорить по шагам, задавая друг другу вопросы по очереди.</p>
+      <p class="lead"><b>Прочитай меня, а я тебя.</b> Когда поссорились и слова не находятся, ReadMe помогает начать с малого: дать знак одной кнопкой, остыть и поговорить по шагам, задавая друг другу вопросы по очереди.</p>
       <p class="muted">ИИ здесь не судья и не решает, кто прав. Говорите вы, своими словами.</p>
     </div>
     <div class="card">
@@ -269,7 +269,7 @@ function renderInvite() {
       <button class="ghost" id="copy">Скопировать ${link ? 'ссылку' : 'код'}</button>
     </div>
     <div class="card"><button class="ghost" id="leave">Отменить пару</button></div>`;
-  const text = 'Мне важно, чтобы мы умели мириться. Давай попробуем эту игру для двоих 💞';
+  const text = 'Мне важно, чтобы мы умели слышать друг друга. Прочитай меня, а я тебя: давай попробуем ReadMe 📖';
   if (link) document.getElementById('share').onclick = () =>
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
   document.getElementById('copy').onclick = () => { navigator.clipboard?.writeText(link || S.pair.code); toast('Скопировано'); };
@@ -355,9 +355,9 @@ function renderDaily() {
   const duo = (answers) => `<div class="duo">${Object.entries(answers).sort(([a]) => (a === S.me.id ? -1 : 1))
     .map(([m, t]) => `<div><span class="muted">${names[m] || esc(S.partner.name)}</span>${esc(t)}</div>`).join('')}</div>`;
   let body;
-  if (d.answers) body = `<p class="muted" style="margin-top:10px">Ответы открылись:</p>${duo(d.answers)}`;
+  if (d.answers) body = `<p class="muted" style="margin-top:10px">Страницы открылись:</p>${duo(d.answers)}`;
   else if (d.mine != null) body = `<div class="pair-status" style="margin-top:10px"><span class="ok">✓ Вы</span><span>… ${esc(S.partner.name)}</span></div>
-    <p class="muted" style="margin-top:10px">🙈 Ваш ответ спрятан. Он откроется, когда ответит ${esc(S.partner.name)}.</p>`;
+    <p class="muted" style="margin-top:10px">📕 Ваша страница пока закрыта. Она откроется, когда ответит ${esc(S.partner.name)}.</p>`;
   else body = `<p class="muted" style="margin-top:6px">${d.partnerAnswered ? `${esc(S.partner.name)} уже ответил(а). Ответьте, и вы увидите ответы друг друга.` : 'Ответы откроются, когда ответите оба.'}</p>
     <textarea id="dtext" maxlength="1000" placeholder="Ваш ответ">${esc(dailyDraft)}</textarea>
     <button id="dsend" class="${d.partnerAnswered ? 'coral' : ''}" style="margin-top:10px">${d.partnerAnswered ? 'Ответить и открыть' : 'Ответить'}</button>`;
@@ -379,7 +379,7 @@ function renderDaily() {
   if (ta) {
     ta.oninput = () => (dailyDraft = ta.value);
     document.getElementById('dsend').onclick = async () => {
-      try { const r = await api('/api/daily', { answer: dailyDraft }); dailyDraft = ''; haptic('medium'); toast(r.both ? 'Ответы открылись ☀️' : 'Ответ спрятан до ответа партнёра 🙈'); refresh(true); }
+      try { const r = await api('/api/daily', { answer: dailyDraft }); dailyDraft = ''; haptic('medium'); toast(r.both ? 'Страницы открылись 📖' : 'Ваша страница закрыта до ответа партнёра 📕'); refresh(true); }
       catch (e) { toast(e.message); }
     };
   }
@@ -575,7 +575,7 @@ function renderTogether(o) {
       <div class="pair-status"><span class="${mine ? 'ok' : ''}">${mine ? '✓' : '…'} Вы</span><span class="${theirs ? 'ok' : ''}">${theirs ? '✓' : '…'} ${esc(S.partner.name)}</span></div>
     </div>`;
   if (mine) {
-    $app.innerHTML = `${head}<div class="card hero"><div class="big">🙈</div><h1>Ваш ответ спрятан</h1>
+    $app.innerHTML = `${head}<div class="card hero"><div class="big">📕</div><h1>Ваша страница пока закрыта</h1>
       <p class="muted">Ответы откроются одновременно, когда ответит ${esc(S.partner.name)}. Мы пришлём уведомление.</p></div>`;
     return;
   }
@@ -599,7 +599,7 @@ function renderTogether(o) {
     try {
       const r = await api('/api/answer', { answer: answer.text, rating: answer.rating, feel: feelPick });
       answer = { text: '', rating: null }; feelPick = null; haptic('medium');
-      if (r.done) { tab = 'history'; toast('Ответы открылись 👫'); } else toast('Ответ спрятан до ответа партнёра 🙈');
+      if (r.done) { tab = 'history'; toast('Страницы открылись 📖'); } else toast('Ваша страница закрыта до ответа партнёра 📕');
       refresh(true);
     } catch (e) { toast(e.message); }
   };
@@ -701,7 +701,8 @@ function renderHistory() {
       <div class="msgtext">${esc(l.text)}</div>
     </div>` })),
   ].sort((a, b) => b.t - a.t);
-  $app.innerHTML = `<h1 style="padding:0 4px 8px">📖 История</h1>
+  $app.innerHTML = `<div class="hero" style="padding:14px 2px 6px"><p class="eyebrow">Ваша общая история</p><h1>Наша книга</h1>
+    <p class="muted">Страница за страницей здесь собирается то, что вы узнали друг о друге: вопросы, ответы и письма.</p></div>
     <div class="card warm">
       ${letterDraft === null
         ? `<h2>✉️ Письмо партнёру</h2><p class="muted">Короткое письмо своими словами. Например, в конце разговора: что вы услышали и что чувствуете сейчас.</p><button id="letterOpen">Написать письмо</button>`

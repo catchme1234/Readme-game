@@ -27,7 +27,7 @@ let bot = null;
 let botUsername = '';
 if (BOT_TOKEN) {
   bot = new Bot(BOT_TOKEN);
-  const openBtn = (url, text = 'Открыть игру 💞') => new InlineKeyboard().webApp(text, url);
+  const openBtn = (url, text = 'Открыть ReadMe 📖') => new InlineKeyboard().webApp(text, url);
 
   bot.command('start', async (ctx) => {
     const payload = ctx.match || '';
@@ -35,8 +35,9 @@ if (BOT_TOKEN) {
       ? `${WEBAPP_URL}?join=${encodeURIComponent(payload.slice(5))}`
       : WEBAPP_URL;
     const text = payload.startsWith('join_')
-      ? 'Вас пригласили в игру для пары 💞\nНажмите кнопку, чтобы присоединиться.'
-      : 'Привет! Это игра для пар, которые застряли в споре или тупике.\n\n' +
+      ? 'Вас пригласили в ReadMe 📖\nПрочитай меня, а я тебя. Нажмите кнопку, чтобы присоединиться.'
+      : 'Привет! Это ReadMe: прочитай меня, а я тебя 📖\n\n' +
+        'Для пар, которые застряли в споре или тупике. ' +
         'Когда поссорились и не можете начать разговор: дайте партнёру знак одной кнопкой, ' +
         'остыньте и поговорите по шагам. Вы по очереди задаёте друг другу вопросы: свои, из библиотеки или подсказанные ИИ. ' +
         'ИИ не судья и не решает, кто прав. Говорите вы.';
@@ -100,7 +101,7 @@ if (BOT_TOKEN) {
       }
       replySignal(pair, user, s, b, '', c);
       await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
-      await ctx.reply(`Ваш ответ: «${r.label}» 🤍`, r.talk || r.step || r.ideas ? { reply_markup: openBtn(WEBAPP_URL, 'Открыть игру 💞') } : undefined);
+      await ctx.reply(`Ваш ответ: «${r.label}» 🤍`, r.talk || r.step || r.ideas ? { reply_markup: openBtn(WEBAPP_URL, 'Открыть ReadMe 📖') } : undefined);
       return done('Ответ отправлен');
     }
     return done();
@@ -115,7 +116,7 @@ if (BOT_TOKEN) {
     const open = pair && S.openQuestion(pair.id);
     const canTogether = open?.kind === 'together' && [open.from, open.to].includes(uid) && open.answers?.[uid] == null;
     if (!open || !(open.to === uid || canTogether)) {
-      return ctx.reply('Сейчас нет вопроса, на который можно ответить голосом. Когда партнёр задаст вопрос, просто пришлите сюда голосовое 🎙', { reply_markup: new InlineKeyboard().webApp('Открыть игру 💞', WEBAPP_URL) });
+      return ctx.reply('Сейчас нет вопроса, на который можно ответить голосом. Когда партнёр задаст вопрос, просто пришлите сюда голосовое 🎙', { reply_markup: new InlineKeyboard().webApp('Открыть ReadMe 📖', WEBAPP_URL) });
     }
     const v = { id: ctx.message.voice.file_id, dur: ctx.message.voice.duration };
     const label = `🎙 Голосовой ответ (${fmtDur(v.dur)})`;
@@ -137,7 +138,7 @@ if (BOT_TOKEN) {
     }
     S.answerQuestion(open.id, label, null, v);
     sendVoice(partnerId, v.id, `🎙 ${user.name} ответил(а) голосом на ваш вопрос «${open.text}»`);
-    return ctx.reply('Голосовой ответ отправлен 💌 Теперь ваш ход: откройте игру, чтобы задать вопрос.', { reply_markup: new InlineKeyboard().webApp('Открыть игру 💞', WEBAPP_URL) });
+    return ctx.reply('Голосовой ответ отправлен 💌 Теперь ваш ход: откройте ReadMe, чтобы задать вопрос.', { reply_markup: new InlineKeyboard().webApp('Открыть ReadMe 📖', WEBAPP_URL) });
   });
 
   bot.catch((e) => console.error('Bot error:', e.message));
@@ -210,7 +211,7 @@ function sendSignal(pair, user, partnerId, kind, note, time) {
   const body = g.text.replace('{when}', G.whenText(s.time));
   const kb = new InlineKeyboard();
   for (const [k, r] of Object.entries(g.replies)) kb.text(r.label, `sr:${s.id}:${k}`).row();
-  kb.webApp('Открыть игру 💞', WEBAPP_URL);
+  kb.webApp('Открыть ReadMe 📖', WEBAPP_URL);
   notifyKb(partnerId, `${g.emoji} ${user.name}:\n\n«${body}»${note ? `\n\n${note}` : ''}`, kb);
   return s;
 }
