@@ -1,5 +1,6 @@
-# Игра на своём сервере. Отдельный проект Docker «para-game»:
-# не публикует порты наружу и не пересекается с другими сервисами на сервере.
+# Игра на своём сервере. Отдельный проект Docker «para-game».
+# Наружу открыт только Caddy (порты 80 и 443): он даёт постоянный HTTPS-адрес
+# вида 77-233-213-93.sslip.io с бесплатным сертификатом, без домена и без карты.
 name: para-game
 services:
   app:
@@ -8,8 +9,20 @@ services:
     env_file: ../.env
     environment:
       TUNNEL_METRICS: http://tunnel:2000
+  web:
+    image: caddy:2-alpine
+    restart: always
+    env_file: ../.env
+    ports:
+      - "80:80"
+      - "443:443"
+    command: sh -c 'if [ -n "$$PUBLIC_HOST" ]; then exec caddy reverse-proxy --from "$$PUBLIC_HOST" --to app:3000; else echo "PUBLIC_HOST не задан"; exec sleep infinity; fi'
+    volumes:
+      - caddy_data:/data
   tunnel:
-    # Бесплатный HTTPS-адрес *.trycloudflare.com без домена и регистрации.
+    # Запасной вариант: временный адрес *.trycloudflare.com, если постоянный не открылся.
     image: cloudflare/cloudflared:latest
     restart: always
     command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://app:3000
+volumes:
+  caddy_data:

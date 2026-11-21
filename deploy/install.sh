@@ -26,7 +26,21 @@ if [ ! -f .env ]; then
   printf 'BOT_TOKEN=%s\nDATABASE_URL=%s\n' "$BOT_TOKEN" "$DATABASE_URL" > .env
 fi
 
-docker compose -f deploy/docker-compose.yml up -d --build
+# Постоянный адрес: IP сервера через бесплатный sslip.io (77.233.213.93 → 77-233-213-93.sslip.io).
+if ! grep -qE '^PUBLIC_HOST=.+' .env; then
+  ip=$(curl -fsS4 --max-time 10 https://api.ipify.org || hostname -I | awk '{print $1}')
+  if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "PUBLIC_HOST=${ip//./-}.sslip.io" >> .env
+  fi
+fi
+# Если на сервере включён файрвол ufw, открываем порты для HTTPS.
+if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
+  ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+fi
+
+docker compose -f deploy/docker-compose.yml up -d --build --remove-orphans
 echo
+addr=$(grep -E '^PUBLIC_HOST=' .env | cut -d= -f2- || true)
 echo "Готово. Через минуту напишите боту /start в Telegram."
+if [ -n "$addr" ]; then echo "Постоянный адрес игры: https://$addr"; fi
 echo "Проверить работу: docker compose -f $DIR/deploy/docker-compose.yml logs --tail 20 app"
