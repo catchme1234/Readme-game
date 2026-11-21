@@ -154,8 +154,13 @@ if (BOT_TOKEN) {
       bot.start();
       console.log(`Бот @${botUsername} запущен`);
     }
-    // На своём сервере без домена адрес даёт туннель Cloudflare (см. deploy/).
-    if (process.env.TUNNEL_METRICS && !process.env.WEBAPP_URL) WEBAPP_URL = await tunnelUrl(process.env.TUNNEL_METRICS);
+    // На своём сервере постоянный адрес даёт Caddy (PUBLIC_HOST, см. deploy/).
+    // Если он не отвечает, запасной вариант: временный адрес туннеля Cloudflare.
+    if (!process.env.WEBAPP_URL && process.env.PUBLIC_HOST) {
+      const url = await publicUrl(process.env.PUBLIC_HOST);
+      if (url) WEBAPP_URL = url;
+    }
+    if (process.env.TUNNEL_METRICS && !process.env.WEBAPP_URL && !WEBAPP_URL.startsWith('https://')) WEBAPP_URL = await tunnelUrl(process.env.TUNNEL_METRICS);
     // Кнопка «Играть» слева от поля ввода в чате с ботом.
     if (WEBAPP_URL.startsWith('https://')) {
       bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Играть', web_app: { url: WEBAPP_URL } } })
@@ -164,6 +169,21 @@ if (BOT_TOKEN) {
   }).catch((e) => console.error('ОШИБКА запуска бота (проверьте BOT_TOKEN):', e.message));
 } else {
   console.error('BOT_TOKEN не задан: бот в Telegram не запущен, работает только демо-режим.');
+}
+
+// Постоянный адрес считаем рабочим, когда сам сервер открывается по нему через HTTPS.
+// Первый раз Caddy получает сертификат, на это уходит до минуты.
+async function publicUrl(host) {
+  const url = `https://${host}`;
+  for (let i = 0; i < 18; i++) {
+    try {
+      const r = await fetch(`${url}/api/config`, { signal: AbortSignal.timeout(8000) });
+      if (r.ok) { console.log(`Адрес мини-приложения (постоянный): ${url}`); return url; }
+    } catch {}
+    await new Promise((res) => setTimeout(res, 10000));
+  }
+  console.error(`Постоянный адрес ${url} не открылся (порты 80 и 443 закрыты?). Включаю запасной туннель.`);
+  return null;
 }
 
 async function tunnelUrl(metrics) {

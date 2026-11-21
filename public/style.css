@@ -196,3 +196,7 @@ nav#tabs[hidden] { display: none; }
 .big-choice .ic svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 button.back { background: none; color: var(--muted); padding: 4px 0; font-size: 15px; font-weight: 600; width: auto; box-shadow: none; }
 .invite { margin: 14px 0; text-align: left; }
+
+/* Плашка «нет связи»: экран и набранный текст остаются на месте */
+#net { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top, 0px)); z-index: 50; max-width: 536px; margin: 0 auto;
+  background: var(--sand-soft); color: var(--ink); border: 1px solid var(--sand); border-radius: 14px; padding: 10px 14px; font-size: 14px; text-align: center; }

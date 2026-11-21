@@ -3,6 +3,8 @@ const inTelegram = Boolean(tg?.initData);
 if (inTelegram) {
   tg.ready(); tg.expand(); document.documentElement.classList.add('tg');
   try { tg.setHeaderColor('#FAF5ED'); tg.setBackgroundColor('#FAF5ED'); tg.setBottomBarColor?.('#FAF5ED'); } catch {}
+  // Свайп вниз больше не закрывает игру посреди письма.
+  try { if (tg.isVersionAtLeast?.('7.7')) tg.disableVerticalSwipes(); } catch {}
 }
 
 const $app = document.getElementById('app');
@@ -193,14 +195,27 @@ let library = { tone: null, items: [] };
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function localStorageSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
 
+const NET_MSG = 'Нет связи, не отправилось. Ваш текст сохранён: нажмите ещё раз, когда появится интернет.';
+const SERVER_MSG = 'Что-то пошло не так у нас. Ваш текст сохранён: попробуйте ещё раз через минуту.';
 async function api(path, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (inTelegram) headers['X-Init-Data'] = tg.initData;
   else headers['X-Demo-User'] = demoUser;
-  const r = await fetch(path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined });
+  let r;
+  // Чтение повторяем сами пару раз: связь в дороге часто пропадает на секунду.
+  for (let i = 0; ; i++) {
+    try {
+      r = await fetch(path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined });
+      if (!body && r.status >= 502 && i < 2) throw new Error('retry');
+      break;
+    } catch {
+      if (body || i >= 2) { const e = new Error(NET_MSG); e.offline = true; throw e; }
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+  }
   const data = await r.json().catch(() => ({}));
   if (data.safety) { S.me.safety = true; render(); throw new Error(''); }
-  if (!r.ok) throw new Error(data.error || 'Ошибка сети');
+  if (!r.ok) { const e = new Error(data.error || SERVER_MSG); e.offline = r.status >= 502; throw e; }
   return data;
 }
 
@@ -208,7 +223,7 @@ function toast(msg) {
   if (!msg) return;
   const t = document.getElementById('toast');
   t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600);
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), Math.max(2600, msg.length * 60));
 }
 function haptic(type = 'light') { try { tg?.HapticFeedback?.impactOccurred(type); } catch {} }
 
@@ -253,18 +268,27 @@ const rateLabel = { love: '❤️ В точку', like: '👍 Хороший', m
 async function refresh(force = false) {
   try {
     const s = await api('/api/state');
+    netBanner(false);
     const json = JSON.stringify(s);
     if (!force && json === lastJson) return;
     lastJson = json; S = s;
     if (sideDraft === null) sideDraft = S.me.situation || '';
+    // Пока человек пишет, экран не перерисовываем: курсор и клавиатура не прыгают.
+    if (!force && isTyping()) { pendingRender = true; return; }
+    pendingRender = false;
     render();
   } catch (e) {
-    $app.innerHTML = `<div class="center">${esc(e.message)}</div>`;
+    if (S) { saveDrafts(); return netBanner(true); }
+    $app.innerHTML = `<div class="center"><p>${e.offline ? 'Нет связи с игрой. Проверьте интернет, я попробую снова сама.' : esc(e.message)}</p><button data-retry style="width:auto">Попробовать снова</button></div>`;
   }
 }
 
 // ---------- Экраны ----------
 function render() {
+  renderScreen();
+  afterRender();
+}
+function renderScreen() {
   document.getElementById('tabs').hidden = !(S.pair && S.partner);
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   if (!S.pair) return renderStart();
@@ -1065,7 +1089,12 @@ async function sendReply() {
 $app.addEventListener('click', onSignalClick);
 
 (async function init() {
-  config = await fetch('/api/config').then((r) => r.json());
+  for (;;) {
+    try { config = await fetch('/api/config').then((r) => { if (!r.ok) throw new Error(); return r.json(); }); break; }
+    catch { $app.innerHTML = '<div class="center"><p>Нет связи с игрой. Проверьте интернет, я попробую снова сама.</p></div>'; await new Promise((res) => setTimeout(res, 4000)); }
+  }
+  restoreDrafts();
+  setupBackButton();
   if (!inTelegram && config.demo) {
     const bar = document.getElementById('demo-bar');
     bar.hidden = false;
@@ -1075,10 +1104,95 @@ $app.addEventListener('click', onSignalClick);
       const b = e.target.closest('[data-demo]'); if (!b) return;
       demoUser = b.dataset.demo; localStorageSet('demoUser', demoUser); mark();
       compose = freshCompose(); sigForm = null; sigReply = null; solo = null; lastIdeas = null;
-      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; dailyDraft = ''; feelPick = null; talkForm = null; summary = null; showSummary = false; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game';
+      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; dailyDraft = ''; feelPick = null; talkForm = null; summary = null; showSummary = false; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game'; stepDraft = '';
+      restoreDrafts();
       refresh(true);
     };
   }
   await refresh(true);
   setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
+  window.addEventListener('online', () => refresh(true));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
 })();
+
+// ---------- Удобство: черновики, «Назад», связь ----------
+let pendingRender = false;
+const isTyping = () => { const a = document.activeElement; return Boolean(a && $app.contains(a) && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(a.type)))); };
+// Когда человек вышел из поля, показываем то, что пришло, пока он писал.
+// Небольшая пауза, чтобы нажатие на кнопку «Отправить» успело сработать.
+document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender && !isTyping()) { pendingRender = false; render(); } }, 400));
+$app.addEventListener('click', (e) => { if (e.target.closest('[data-retry]')) { $app.innerHTML = '<div class="center muted">Загрузка…</div>'; refresh(true); } });
+
+function netBanner(on) {
+  let b = document.getElementById('net');
+  if (!on) { if (b) b.hidden = true; return; }
+  if (!b) { b = document.createElement('div'); b.id = 'net'; b.setAttribute('role', 'status'); document.body.appendChild(b); }
+  b.textContent = 'Нет связи. Всё, что вы написали, сохранено. Пробую снова…';
+  b.hidden = false;
+}
+
+// Черновики хранятся на телефоне: не пропадут, если Telegram закрылся или пропала связь.
+const DRAFT_DAYS = 3;
+const draftKey = () => `drafts:${inTelegram ? tg.initDataUnsafe?.user?.id || 'me' : demoUser}`;
+function draftSnapshot() {
+  return {
+    t: Date.now(),
+    compose: { mode: compose.mode, text: compose.text, why: compose.why, together: compose.together },
+    replyDraft, letterDraft, msgDraft, dailyDraft, summary, stepDraft, solo, sigForm,
+    answer: answer.text,
+    side: S && sideDraft !== null && sideDraft !== (S.me.situation || '') ? sideDraft : null,
+  };
+}
+function hasUnsentText() {
+  return [compose.text, compose.why, replyDraft, letterDraft, msgDraft, dailyDraft, summary?.heard, summary?.step, answer.text, stepDraft, solo?.important, sigForm?.note,
+    S && sideDraft !== null && sideDraft !== (S.me.situation || '') ? sideDraft : '']
+    .some((v) => typeof v === 'string' && v.trim());
+}
+function saveDrafts() {
+  localStorageSet(draftKey(), JSON.stringify(draftSnapshot()));
+  // Если есть неотправленный текст, Telegram переспросит перед закрытием.
+  try {
+    if (inTelegram && tg.isVersionAtLeast?.('6.2')) hasUnsentText() ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation();
+  } catch {}
+}
+function restoreDrafts() {
+  let d;
+  try { d = JSON.parse(localStorageGet(draftKey()) || 'null'); } catch { d = null; }
+  if (!d || Date.now() - d.t > DRAFT_DAYS * 864e5) return;
+  if (d.compose) compose = { ...freshCompose(d.compose.mode), ...d.compose };
+  replyDraft = d.replyDraft || '';
+  letterDraft = d.letterDraft ?? null;
+  msgDraft = d.msgDraft ?? null;
+  dailyDraft = d.dailyDraft || '';
+  summary = d.summary || null;
+  stepDraft = d.stepDraft || '';
+  solo = d.solo || null;
+  sigForm = d.sigForm || null;
+  answer = { text: d.answer || '', rating: null };
+  if (d.side != null) sideDraft = d.side;
+}
+let saveT;
+document.addEventListener('input', () => { clearTimeout(saveT); saveT = setTimeout(saveDrafts, 300); });
+
+// Стрелка «Назад» в шапке Telegram: шаг назад, а с любого экрана в итоге на главную.
+function backTarget() {
+  if (!S || !S.pair || !S.partner || !S.me.tone || S.me.safety) return null;
+  if (tab === 'tone') return () => { tab = 'side'; };
+  if (tab !== 'game') return () => { tab = 'game'; view = 'home'; };
+  if (solo) return () => { if (solo.step > 1) solo.step -= 1; else solo = null; };
+  if (showSummary) return () => { showSummary = false; };
+  if (view !== 'home' || sigForm) return () => { view = 'home'; sigForm = null; };
+  return null;
+}
+function setupBackButton() {
+  if (!inTelegram || !tg.BackButton || !tg.isVersionAtLeast?.('6.1')) return;
+  tg.BackButton.onClick(() => {
+    const go = backTarget(); if (!go) return;
+    haptic('light'); go(); window.scrollTo(0, 0); render();
+  });
+}
+function afterRender() {
+  saveDrafts();
+  if (!inTelegram || !tg.BackButton || !tg.isVersionAtLeast?.('6.1')) return;
+  try { backTarget() ? tg.BackButton.show() : tg.BackButton.hide(); } catch {}
+}

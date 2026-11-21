@@ -19,9 +19,21 @@ if [[ "$db" != postgres* ]]; then
 fi
 db=${db//&amp;/&}
 umask 077
-printf 'BOT_TOKEN=%s\nDATABASE_URL=%s\n' "$tok" "$db" > .env
+{ printf 'BOT_TOKEN=%s\nDATABASE_URL=%s\n' "$tok" "$db"; grep -vE '^(BOT_TOKEN|DATABASE_URL)=' .env 2>/dev/null; } > .env.new && mv .env.new .env
 
-docker compose -f deploy/docker-compose.yml up -d --build --force-recreate >/dev/null 2>&1
+# Постоянный адрес: IP сервера через бесплатный sslip.io (77.233.213.93 → 77-233-213-93.sslip.io).
+if ! grep -qE '^PUBLIC_HOST=.+' .env; then
+  ip=$(curl -fsS4 --max-time 10 https://api.ipify.org || hostname -I | awk '{print $1}')
+  if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "PUBLIC_HOST=${ip//./-}.sslip.io" >> .env
+  fi
+fi
+# Если на сервере включён файрвол ufw, открываем порты для HTTPS.
+if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
+  ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+fi
+
+docker compose -f deploy/docker-compose.yml up -d --build --force-recreate --remove-orphans >/dev/null 2>&1
 echo "Перезапускаю, подождите 30 секунд…"
 sleep 30
 echo "===== СОСТОЯНИЕ ====="
