@@ -1,6 +1,6 @@
 /* «Прочитай меня» — фирменный стиль «Уголки».
-   Четыре смысла цвета: love (коралл) — главное действие, quarrel (винный) — только о самой ссоре,
-   couple (лаванда) — всё про партнёра и «вас двоих», resolve/mint (шалфей) — примирение.
+   Одна система: тёплый фон, белые карточки, все кнопки-действия коралловые (love), второстепенные — контуром.
+   Винный (quarrel) — только на градусе 4–5. Лаванда и мята — только в знаке «Уголки».
    Заголовки Rubik, текст Noto Sans. Светлая и тёмная темы (тёмная — как в Telegram у человека). */
 
 @font-face { font-family: "Rubik"; font-weight: 300 900; font-display: swap; src: url(fonts/rubik-cyr.woff2) format("woff2");
@@ -76,13 +76,11 @@ p { margin: 0 0 10px; }
 .hero .big img { width: 36px; height: 36px; }
 
 /* Кнопки. Обычная — чернильная пилюля. Главная на экране — love (одна на экран), текст on-love. */
-button, .btn { font: inherit; border: 0; border-radius: var(--radius-pill); padding: 14px 18px; cursor: pointer; background: var(--ink); color: var(--on-ink);
+button, .btn { font: inherit; border: 0; border-radius: var(--radius-pill); padding: 14px 18px; cursor: pointer; background: var(--love); color: var(--on-love);
   font-weight: 600; width: 100%; min-height: 48px; transition: transform .08s ease, background .15s ease; }
 button:active { transform: scale(.98); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 button.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
-button.coral, #send, #replySend, #create, #finish, #letterSend, #dsend, [data-ssend], [data-rsend], [data-solosend], [data-talkstart], #share {
-  background: var(--love); color: var(--on-love); }
 button:disabled { opacity: .45; cursor: default; }
 button + button { margin-top: 8px; }
 a { color: var(--love-ink); }
@@ -105,7 +103,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
 .qlist button { text-align: left; font-weight: 500; background: var(--surface-sunk); color: var(--ink); margin: 0 0 8px; border-radius: var(--radius-md); padding: 12px 14px; }
 .qlist button.on { background: var(--love-soft); box-shadow: inset 0 0 0 2px var(--love); }
 .qlist button.asked { opacity: .5; }
-.stagetag { display: block; font: 500 12px/16px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--resolve); margin-bottom: 2px; }
+.stagetag { display: block; font: 500 12px/16px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--love-ink); margin-bottom: 2px; }
 .question { font: 500 19px/28px var(--font); margin: 6px 0 12px; text-wrap: balance; }
 .badge { display: inline-block; font: 500 12px/16px var(--font); padding: 4px 10px; border-radius: var(--radius-pill); background: var(--surface-sunk); color: var(--ink-muted); margin: 0 4px 4px 0; }
 .rating { display: flex; gap: 8px; margin: 8px 0 16px; }
@@ -113,10 +111,10 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
 .rating button.on { background: var(--love-soft); box-shadow: inset 0 0 0 2px var(--love); }
 .private { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-sunk); padding: 12px 14px; border-radius: var(--radius-md); font-size: 14px; margin-bottom: 16px; }
 .hist .a { margin-top: 8px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-sunk); }
-.hist .a.r { background: var(--couple-soft); }
+
 .bar { height: 8px; border-radius: 4px; background: var(--surface-sunk); overflow: hidden; margin: 4px 0 10px; }
-.bar i { display: block; height: 100%; background: var(--mint); }
-.code { font: 600 28px/1 var(--display); letter-spacing: 6px; text-align: center; padding: 16px; background: var(--couple-soft); border-radius: var(--radius-md); margin: 8px 0 16px; }
+.bar i { display: block; height: 100%; background: var(--love); }
+.code { font: 600 28px/1 var(--display); letter-spacing: 6px; text-align: center; padding: 16px; background: var(--surface-sunk); border-radius: var(--radius-md); margin: 8px 0 16px; }
 
 /* Нижнее меню: активная вкладка — love */
 nav#tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--surface);
@@ -146,24 +144,24 @@ nav#tabs[hidden] { display: none; }
 .foot { text-align: center; color: var(--ink-muted); font-size: 12px; margin: 10px 0 4px; }
 
 /* Личные слова: посыл, письма — тёплая утопленная страница */
-.card.warm { background: var(--surface-sunk); border-color: var(--line); }
+.card.warm { background: var(--surface-raised); }
 /* Слова партнёра — лаванда «пара» */
-.card.msg { background: var(--couple-soft); border-color: transparent; }
-.card.msg .muted { color: var(--ink); opacity: .8; }
+.card.msg { background: var(--surface-raised); }
+.card.msg .muted { font-weight: 600; }
 .msgtext { font: 500 19px/28px var(--font); white-space: pre-wrap; }
 .why { margin: 10px 0; display: grid; gap: 6px; }
 .why label { font-size: 14px; font-weight: 600; }
 
 /* Отвечаем вдвоём: моя страница и страница партнёра */
-.toggle { display: flex; gap: 10px; align-items: flex-start; background: var(--couple-soft); border-radius: var(--radius-md); padding: 12px 14px; margin: 10px 0; font-size: 14px; }
-.toggle .muted { color: var(--ink); opacity: .8; }
-.toggle input { width: 20px; height: 20px; flex: none; margin-top: 2px; accent-color: var(--couple); }
+.toggle { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-sunk); border-radius: var(--radius-md); padding: 12px 14px; margin: 10px 0; font-size: 14px; }
+
+.toggle input { width: 20px; height: 20px; flex: none; margin-top: 2px; accent-color: var(--love); }
 .pair-status { display: flex; gap: 8px; }
 .pair-status span { flex: 1; text-align: center; padding: 8px; border-radius: var(--radius-pill); background: var(--surface-sunk); color: var(--ink-muted); font-size: 14px; font-weight: 500; }
-.pair-status span.ok { color: var(--ink); background: var(--resolve-soft); }
+.pair-status span.ok { color: var(--on-love); background: var(--love-soft); }
 .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .duo > div { border-radius: var(--radius-md); padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0; overflow-wrap: anywhere; background: var(--surface-sunk); }
-.duo > div + div { background: var(--couple-soft); }
+
 .duo .muted { color: var(--ink); opacity: .8; font-weight: 600; font-size: 12px; }
 
 /* Вопрос дня */
@@ -172,17 +170,17 @@ nav#tabs[hidden] { display: none; }
 .streak span { font: 600 20px var(--display); }
 
 /* Разговор по ступеням и итоги — примирение */
-.card.talk { background: var(--resolve-soft); border-color: transparent; }
-.card.talk .muted { color: var(--ink); opacity: .85; }
+.card.talk { background: var(--surface-raised); }
+
 .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 10px; }
 .steps i { height: 6px; border-radius: 6px; background: color-mix(in srgb, var(--ink) 14%, transparent); }
-.steps i.d { background: var(--resolve); }
+.steps i.d { background: var(--love-ink); }
 .steps i.now { background: var(--love); }
 /* Градус: спокойно → горячо. Винный только на 4–5, это и есть ссора. */
 .temps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .temps button { margin: 0; padding: 10px 0; min-height: 44px; background: var(--surface-raised); color: var(--ink); border-radius: var(--radius-md); box-shadow: inset 0 0 0 1.5px var(--line); }
 .temps button.on { box-shadow: none; }
-.temps .t1.on { background: var(--mint); color: #173C38; } .temps .t2.on { background: var(--resolve-soft); } .temps .t3.on { background: var(--love-soft); }
+.temps .t1.on, .temps .t2.on, .temps .t3.on { background: var(--love-soft); box-shadow: inset 0 0 0 2px var(--love); }
 .temps .t4.on { background: var(--quarrel-soft); box-shadow: inset 0 0 0 2px var(--quarrel); } .temps .t5.on { background: var(--quarrel); color: var(--on-quarrel); }
 .sep { height: 1px; background: var(--line); margin: 12px 0; }
 a[data-retemp] { color: var(--love-ink); }
@@ -196,14 +194,14 @@ audio { width: 100%; margin-top: 6px; }
 .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sigs button { margin: 0; text-align: left; display: flex; gap: 8px; align-items: center; font-size: 14px; padding: 12px 14px; border-radius: var(--radius-md);
   background: var(--surface-raised); color: var(--ink); font-weight: 500; box-shadow: inset 0 0 0 1.5px var(--line); }
-.card.signal.in { background: var(--couple-soft); border-color: transparent; }
-.card.signal.in .muted { color: var(--ink); opacity: .8; }
+.card.signal.in { background: var(--surface-raised); border: 1.5px solid var(--love); }
+
 .card.signal.out { background: var(--surface-raised); }
 /* Реплика партнёра: «уголок» — один острый угол, как хвостик у реплики */
-.bubble { background: var(--couple-soft); color: var(--ink); border-radius: 4px 18px 18px 18px; padding: 12px 16px; font: 500 19px/28px var(--font); }
-.card.signal.in .bubble { background: var(--surface-raised); }
+.bubble { background: var(--surface-sunk); color: var(--ink); border-radius: 4px 18px 18px 18px; padding: 12px 16px; font: 500 19px/28px var(--font); }
+
 .replies { display: grid; gap: 6px; margin-top: 12px; }
-.replies button { margin: 0; }
+.replies button { margin: 0; background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
 .pause, .repeat { margin-top: 10px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--surface-raised); font-size: 14px; }
 .harsh { background: var(--surface-sunk); padding: 10px 12px; border-radius: var(--radius-sm); margin-top: 8px; color: var(--ink); }
 /* Безопасность — спокойно и ясно, без «тревожного» цвета: ошибка не ссора */
@@ -211,19 +209,17 @@ audio { width: 100%; margin-top: 6px; }
 .contact { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .contact b { font: 600 18px var(--display); user-select: all; }
 
-/* Главная: две большие кнопки. «Поговорить» — главное действие (love), «Дать знак» — про партнёра (лаванда). */
+/* Главная: две большие кнопки — одинаковые белые карточки, два равных пути. Коралл — только кружок с иконкой. */
 .home { padding: 8px 0 4px; }
 .home h1 { margin: 2px 0 6px; }
 .home .lead { color: var(--ink-muted); font-size: 16px; margin: 0 0 20px; }
 .big-choice { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; padding: 20px 18px; margin: 0 0 12px;
-  background: var(--couple-soft); color: var(--ink); border: 0; border-radius: 28px 28px 28px 6px; min-height: 96px; }
-.big-choice + .big-choice { background: var(--love); color: var(--on-love); border-radius: 28px 6px 28px 28px; }
+  background: var(--surface-raised); color: var(--ink); border: 1.5px solid var(--line); border-radius: 28px 28px 28px 6px; min-height: 96px; }
+.big-choice + .big-choice { margin-top: 0; }
 .big-choice b { display: block; font: 600 22px/28px var(--display); margin-bottom: 2px; }
 .big-choice small { display: block; color: inherit; opacity: .85; font-size: 14px; font-weight: 400; line-height: 20px; }
-.big-choice .ic { flex: none; width: 52px; height: 52px; border-radius: var(--radius-pill); background: var(--surface-raised); display: grid; place-items: center; }
-.big-choice + .big-choice .ic { background: rgba(255,255,255,.55); }
-.big-choice .ic svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.big-choice + .big-choice .ic svg { stroke: var(--on-love); }
+.big-choice .ic { flex: none; width: 52px; height: 52px; border-radius: var(--radius-pill); background: var(--love); display: grid; place-items: center; }
+.big-choice .ic svg { width: 26px; height: 26px; fill: none; stroke: var(--on-love); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 button.back { background: none; color: var(--ink-muted); padding: 4px 0; min-height: 40px; font-size: 14px; font-weight: 500; width: auto; box-shadow: none; }
 .invite { margin: 14px 0; text-align: left; }
 

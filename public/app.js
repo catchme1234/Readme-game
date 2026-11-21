@@ -235,7 +235,7 @@ function toast(msg) {
 }
 function haptic(type = 'light') { try { tg?.HapticFeedback?.impactOccurred(type); } catch {} }
 
-const toneLabel = (t) => (config.tones[t] ? `${config.tones[t].emoji} ${config.tones[t].label}` : 'не выбран');
+const toneLabel = (t) => (config.tones[t] ? config.tones[t].label : 'не выбран');
 const srcLabel = { own: 'свой', library: 'из библиотеки', ai: 'от ИИ' };
 const srcBadge = (q) => (q.kind === 'say' ? 'сказал(а)' : q.kind === 'together' ? 'вдвоём' : q.edited ? 'своими словами' : srcLabel[q.source]);
 const SAY_STARTERS = ['Мне важно…', 'Мне жаль, что…', 'Я ценю, что ты…', 'Я боюсь, что…', 'Я прошу…', 'Мне не хватает…'];
