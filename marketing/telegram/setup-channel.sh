@@ -20,9 +20,9 @@ echo "Бот: @$BOT"
 sed -i "s/{{BOT}}/$BOT/g" "$DIR"/*.txt
 
 echo "1) Аватар канала"
-curl -s -F chat_id="$CHANNEL" -F photo=@"$DIR/avatar.png" "$API/setChatPhoto"; echo
+curl -sS --form-string chat_id="$CHANNEL" -F photo=@"$DIR/avatar.png" "$API/setChatPhoto" || echo "Аватар не поставился"; echo
 echo "2) Описание канала"
-curl -s "$API/setChatDescription" --data-urlencode chat_id="$CHANNEL" --data-urlencode description@"$DIR/channel-description.txt"; echo
+curl -sS "$API/setChatDescription" --data-urlencode chat_id="$CHANNEL" --data-urlencode description@"$DIR/channel-description.txt"; echo
 
 cat > "$DIR/send-post.sh" <<SH
 #!/usr/bin/env bash
