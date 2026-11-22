@@ -178,14 +178,14 @@ const QUICK_SIGNS = [['cool', 'Остыть'], ['miss', 'Скучаю'], ['makeu
 function heroScene(progress, calm) {
   const r = 92, cx = 195, cy = 196, len = Math.PI * r;
   return `<svg class="scene" viewBox="0 0 390 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <polygon points="250,0 390,0 390,300 120,300" fill="#FFFFFF" opacity=".05"/>
-    <path d="M0 210 C70 170 130 190 190 175 S320 150 390 170 V300 H0z" fill="#1F4A45"/>
-    <g fill="#E2685A"><ellipse cx="44" cy="186" rx="10" ry="15"/><ellipse cx="338" cy="158" rx="9" ry="14"/><ellipse cx="362" cy="166" rx="7" ry="11"/></g>
-    <g fill="#9CCFB4"><ellipse cx="66" cy="190" rx="8" ry="12"/><ellipse cx="312" cy="164" rx="7" ry="11"/></g>
-    <g stroke="#173C38" stroke-width="2"><path d="M44 200v12M66 202v10M338 172v12M362 177v9M312 175v9"/></g>
-    <path d="M0 250 C90 225 150 240 200 236 S330 222 390 232 V300 H0z" fill="#24564F"/>
-    <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="10" stroke-linecap="round"/>
-    <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${calm ? '#9CCFB4' : '#EF8273'}" stroke-width="10" stroke-linecap="round"
+    <polygon class="beam" points="250,0 390,0 390,300 120,300"/>
+    <path d="M0 210 C70 170 130 190 190 175 S320 150 390 170 V300 H0z" class="hill1"/>
+    <g class="tree1"><ellipse cx="44" cy="186" rx="10" ry="15"/><ellipse cx="338" cy="158" rx="9" ry="14"/><ellipse cx="362" cy="166" rx="7" ry="11"/></g>
+    <g class="tree2"><ellipse cx="66" cy="190" rx="8" ry="12"/><ellipse cx="312" cy="164" rx="7" ry="11"/></g>
+    <g class="trunk" stroke-width="2"><path d="M44 200v12M66 202v10M338 172v12M362 177v9M312 175v9"/></g>
+    <path d="M0 250 C90 225 150 240 200 236 S330 222 390 232 V300 H0z" class="hill2"/>
+    <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" class="arc-track" fill="none" stroke-width="10" stroke-linecap="round"/>
+    <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" class="arc ${calm ? 'calm' : ''}" fill="none" stroke-width="10" stroke-linecap="round"
       stroke-dasharray="${(len * progress).toFixed(1)} ${len.toFixed(1)}"/>
     <g transform="translate(135 150) scale(.39)">
       <defs><clipPath id="hc"><path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z"/></clipPath></defs>
@@ -1258,7 +1258,7 @@ function afterRender() {
   saveDrafts();
   const home = Boolean(S && S.partner && S.me?.tone && !S.me.safety && !solo && tab === 'game' && view === 'home' && !sigForm);
   document.documentElement.classList.toggle('home-mode', home);
-  if (inTelegram) try { const c = home ? '#173C38' : getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(); tg.setHeaderColor(c); } catch {}
+  if (inTelegram) try { const c = home ? getComputedStyle(document.documentElement).getPropertyValue('--hero-sky').trim() : getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(); tg.setHeaderColor(c); } catch {}
   if (!inTelegram || !tg.BackButton || !tg.isVersionAtLeast?.('6.1')) return;
   try { backTarget() ? tg.BackButton.show() : tg.BackButton.hide(); } catch {}
 }

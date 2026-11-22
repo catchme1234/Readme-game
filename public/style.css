@@ -230,41 +230,39 @@ button.back { background: none; color: var(--ink-muted); padding: 4px 0; min-hei
 @media (max-width: 380px) { .sigs { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }
 
-/* ---------- Главная: сцена сверху, тёмная панель снизу ---------- */
-html.home-mode, html.home-mode body { background: #151B1A; }
+/* ---------- Главная: светлая сцена сверху, светлая панель снизу ---------- */
+:root { --hero-sky: #F6E2DB; --hero-beam: rgba(255,255,255,.45); --hero-hill1: #CFE6D6; --hero-hill2: #9CCFB4;
+  --hero-tree1: #E2685A; --hero-tree2: #6F5BC4; --hero-trunk: #5E6B68; --hero-track: rgba(23,60,56,.12); --hero-arc: #E2685A; --hero-calm: #2F7A5A; }
+:root[data-theme="dark"] { --hero-sky: #1E2624; --hero-beam: rgba(255,255,255,.04); --hero-hill1: #1C3A2E; --hero-hill2: #24493A;
+  --hero-tree1: #EF8273; --hero-tree2: #B4A6F0; --hero-trunk: #A9B5B2; --hero-track: rgba(243,236,232,.14); --hero-arc: #EF8273; --hero-calm: #7FC9A6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --hero-sky: #1E2624; --hero-beam: rgba(255,255,255,.04); --hero-hill1: #1C3A2E; --hero-hill2: #24493A;
+  --hero-tree1: #EF8273; --hero-tree2: #B4A6F0; --hero-trunk: #A9B5B2; --hero-track: rgba(243,236,232,.14); --hero-arc: #EF8273; --hero-calm: #7FC9A6; } }
 html.home-mode #brand { display: none; }
 html.home-mode main { padding: 0; max-width: none; }
-.hero { position: relative; overflow: hidden; background: #173C38; color: #FCF4F1; min-height: 460px; padding: 14px 24px 0; }
+.hero { position: relative; overflow: hidden; background: var(--hero-sky); color: var(--ink); min-height: 460px; padding: 14px 24px 0; }
 .hero > * { position: relative; z-index: 1; max-width: 512px; margin-left: auto; margin-right: auto; }
 .hero .scene { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 300px; z-index: 0; max-width: none; }
-.hero-top { display: flex; align-items: center; justify-content: center; gap: 8px; font: 600 15px/1 var(--display); opacity: .9; margin-bottom: 26px; }
+.scene .beam { fill: var(--hero-beam); } .scene .hill1 { fill: var(--hero-hill1); } .scene .hill2 { fill: var(--hero-hill2); }
+.scene .tree1 { fill: var(--hero-tree1); } .scene .tree2 { fill: var(--hero-tree2); } .scene .trunk { stroke: var(--hero-trunk); }
+.scene .arc-track { stroke: var(--hero-track); } .scene .arc { stroke: var(--hero-arc); } .scene .arc.calm { stroke: var(--hero-calm); }
+.hero-top { display: flex; align-items: center; justify-content: center; gap: 8px; font: 600 15px/1 var(--display); margin-bottom: 26px; }
 .hero-top img { width: 22px; height: 22px; }
-.hero-title { font: 700 48px/50px var(--display); letter-spacing: -.5px; margin: 0 0 10px; color: #FCF4F1; text-wrap: balance; }
-.hero-sub { font-size: 15px; line-height: 20px; color: #FCF4F1; opacity: .85; margin: 0 0 14px; }
-button.pill { width: auto; min-height: 40px; padding: 9px 20px; background: #FCF4F1; color: #173C38; font-size: 15px; margin: 0 0 12px; }
+.hero-title { font: 700 48px/50px var(--display); letter-spacing: -.5px; margin: 0 0 10px; color: var(--ink); text-wrap: balance; }
+.hero-sub { font-size: 15px; line-height: 20px; color: var(--ink-muted); margin: 0 0 14px; }
+button.pill { width: auto; min-height: 40px; padding: 9px 20px; background: var(--ink); color: var(--on-ink); font-size: 15px; margin: 0 0 12px; }
 
-/* Нижняя панель всегда в тёмных фирменных цветах, как в тёмной теме */
-.panel { --surface: #151B1A; --surface-raised: #1E2624; --surface-sunk: #101514; --line: #2C3634;
-  --ink: #F3ECE8; --ink-muted: #A9B5B2; --love: #EF8273; --love-ink: #F39A8C; --love-soft: #4A2620;
-  --quarrel: #D9708A; --quarrel-soft: #3A1C25; --on-quarrel: #2A1013; --focus-ring: #F3ECE8; --on-ink: #151B1A;
-  color-scheme: dark; color: var(--ink); background: var(--surface); position: relative; z-index: 2;
+.panel { color: var(--ink); background: var(--surface); position: relative; z-index: 2;
   margin-top: -28px; border-radius: 28px 28px 0 0; padding: 20px 16px 24px; }
 .panel > * { max-width: 528px; margin-left: auto; margin-right: auto; }
-.panel .big-choice { background: var(--surface-raised); border-color: var(--line); }
 button.stat { width: 100%; text-align: left; font-weight: 400; }
-.stat { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: var(--surface-raised); border-radius: var(--radius-md);
+.stat { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: var(--surface-raised); border: 1.5px solid var(--line); border-radius: var(--radius-md);
   padding: 16px 18px; margin: 4px auto 12px; color: var(--ink-muted); font-size: 14px; }
 .stat b { font: 600 32px/1 var(--display); color: var(--ink); }
-.stat b small { font: 500 15px var(--font); color: var(--ink-muted); }
-.quick { background: var(--surface-raised); border-radius: var(--radius-md); margin-bottom: 16px; overflow: hidden; }
+.stat b small { font: 500 15px var(--font); color: var(--love-ink); }
+.quick { background: var(--surface-raised); border: 1.5px solid var(--line); border-radius: var(--radius-md); margin-bottom: 16px; overflow: hidden; }
 .quick-row { display: grid; grid-template-columns: repeat(5, 1fr); padding: 14px 6px 10px; }
 .quick-row button { background: none; color: var(--ink); padding: 6px 0; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; border-radius: 12px; }
-.quick-row svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.quick-row svg { width: 28px; height: 28px; fill: none; stroke: var(--love-ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 button.quick-more { display: flex; justify-content: space-between; background: none; color: var(--ink); border-top: 1px solid var(--line); border-radius: 0;
   padding: 14px 18px; margin: 0; font-family: var(--display); font-weight: 600; text-align: left; }
 button.quick-more span { color: var(--ink-muted); }
-
-/* Нижнее меню на главной — тёмное, как панель */
-html.home-mode nav#tabs { background: #151B1A; border-top-color: #2C3634; }
-html.home-mode nav#tabs button { color: #A9B5B2; }
-html.home-mode nav#tabs button.active { color: #F39A8C; }
