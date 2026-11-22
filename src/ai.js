@@ -3,7 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { LIBRARY, TONES, STAGE_Q } from './library.js';
+import { LIBRARY, TONES, STAGE_Q, calmFilter } from './library.js';
 
 const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 export const aiEnabled = Boolean(client);
@@ -31,10 +31,10 @@ const SYSTEM = `Ты бережный помощник для пары, кото
 
 function fallback(tone, asked, stage) {
   if (stage) {
-    const st = STAGE_Q[stage.n][tone].filter((q) => !asked.includes(q));
+    const st = calmFilter(STAGE_Q[stage.n][tone], stage.hot).filter((q) => !asked.includes(q));
     if (st.length >= 3) return [...st].sort(() => Math.random() - 0.5).slice(0, 3);
   }
-  const pool = LIBRARY[tone].filter((q) => !asked.includes(q));
+  const pool = calmFilter(LIBRARY[tone], stage?.hot).filter((q) => !asked.includes(q));
   const src = pool.length >= 3 ? pool : LIBRARY[tone];
   return [...src].sort(() => Math.random() - 0.5).slice(0, 3);
 }
@@ -75,7 +75,7 @@ ${receiver.situation || '(не заполнено)'}
 История вопросов и ответов (ответы оба партнёра уже видели):
 ${hist}
 
-${stage ? `Пара сейчас в разговоре на тему «${stage.topic}», ступень ${stage.n} из 5: «${stage.label}» (${stage.hint}). Вопросы должны подходить этой ступени.${stage.deep ? ` Это уже ${stage.repeat || 'не первый'}-й разговор об этой теме: пара хочет поговорить о теме целиком, о том, почему они возвращаются к ней снова, а не о последнем случае.` : ''}${stage.hot ? ' Кому-то из них сейчас очень горячо: никаких глубоких и острых вопросов, только бережные.' : ''}\n\n` : ''}Предложи 3 вопроса, которые ${asker.name} может задать ${receiver.name}: первый самый бережный, второй самый точный, третий чуть смелее.`;
+${stage ? `Пара сейчас в разговоре на тему «${stage.topic}», ступень ${stage.n} из 5: «${stage.label}» (${stage.hint}). Вопросы должны подходить этой ступени.${stage.deep ? ` Это уже ${stage.repeat || 'не первый'}-й разговор об этой теме: пара хочет поговорить о теме целиком, о том, почему они возвращаются к ней снова, а не о последнем случае.` : ''}${stage.hot ? ' Кому-то из них сейчас очень горячо: никаких шуток, игривых, глубоких и острых вопросов, никаких вопросов о прошлом, семье родителей и страхах. Только бережные вопросы о том, что сейчас.' : ''}\n\n` : ''}Предложи 3 вопроса, которые ${asker.name} может задать ${receiver.name}: первый самый бережный, второй самый точный, третий чуть смелее.`;
 
   try {
     const res = await client.messages.parse({

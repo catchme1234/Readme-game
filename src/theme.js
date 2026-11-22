@@ -27,5 +27,5 @@ export const THEME_Q = {
   ],
 };
 
-export const themeQuestions = (tone, topicLabel) =>
-  (THEME_Q[tone] || THEME_Q.gentle).map((q) => q.replaceAll('{topic}', topicLabel.toLowerCase()));
+export const themeQuestions = (tone, topicLabel, hot) =>
+  (THEME_Q[tone] || THEME_Q.gentle).filter((q) => !(hot && q.includes('в детстве'))).map((q) => q.replaceAll('{topic}', topicLabel.toLowerCase()));
