@@ -163,27 +163,81 @@ function waitingCards() {
   return out.join('');
 }
 
+// Иконки быстрых знаков на главной: тонкие линии, как в нижнем меню.
+const SIG_ICON = {
+  cool: '<path d="M4 9h10a3 3 0 1 0-3-3"/><path d="M4 13h14a3 3 0 1 1-3 3"/><path d="M4 17h6"/>',
+  miss: '<path d="M12 19.5s-7-4.3-7-9.3A3.8 3.8 0 0 1 12 8a3.8 3.8 0 0 1 7 2.2c0 5-7 9.3-7 9.3z"/>',
+  makeup: '<path d="M4 16V9.5A3.5 3.5 0 0 1 7.5 6h3A3.5 3.5 0 0 1 14 9.5v1A3.5 3.5 0 0 1 10.5 14H6z"/><path d="M20 8v6.5a3.5 3.5 0 0 1-3.5 3.5h-3A3.5 3.5 0 0 1 10 14.5"/>',
+  hurt: '<path d="M7 17a4 4 0 0 1-.6-8A5.5 5.5 0 0 1 17 8.5a3.8 3.8 0 0 1 .5 7.5z"/><path d="M12 17v3"/>',
+  thanks: '<circle cx="12" cy="12" r="2.5"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3M6.5 6.5l2 2M15.5 15.5l2 2M6.5 17.5l2-2M15.5 8.5l2-2"/>',
+};
+const QUICK_SIGNS = [['cool', 'Остыть'], ['miss', 'Скучаю'], ['makeup', 'Помириться'], ['hurt', 'Обидно'], ['thanks', 'Спасибо']];
+
+// Сцена главной: тёплые холмы, деревья в цветах бренда, знак «Уголки» и дуга —
+// сколько ступеней разговора пройдено (без разговора дуга целая и мятная: всё спокойно).
+function heroScene(progress, calm) {
+  const r = 92, cx = 195, cy = 196, len = Math.PI * r;
+  return `<svg class="scene" viewBox="0 0 390 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <polygon points="250,0 390,0 390,300 120,300" fill="#FFFFFF" opacity=".05"/>
+    <path d="M0 210 C70 170 130 190 190 175 S320 150 390 170 V300 H0z" fill="#1F4A45"/>
+    <g fill="#E2685A"><ellipse cx="44" cy="186" rx="10" ry="15"/><ellipse cx="338" cy="158" rx="9" ry="14"/><ellipse cx="362" cy="166" rx="7" ry="11"/></g>
+    <g fill="#9CCFB4"><ellipse cx="66" cy="190" rx="8" ry="12"/><ellipse cx="312" cy="164" rx="7" ry="11"/></g>
+    <g stroke="#173C38" stroke-width="2"><path d="M44 200v12M66 202v10M338 172v12M362 177v9M312 175v9"/></g>
+    <path d="M0 250 C90 225 150 240 200 236 S330 222 390 232 V300 H0z" fill="#24564F"/>
+    <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="10" stroke-linecap="round"/>
+    <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="${calm ? '#9CCFB4' : '#EF8273'}" stroke-width="10" stroke-linecap="round"
+      stroke-dasharray="${(len * progress).toFixed(1)} ${len.toFixed(1)}"/>
+    <g transform="translate(135 150) scale(.39)">
+      <defs><clipPath id="hc"><path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z"/></clipPath></defs>
+      <path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z" fill="#E2685A"/>
+      <path d="M280 0 V112 a64 64 0 0 1 -64 64 h-48 a64 64 0 0 1 -64 -64 v-48 a64 64 0 0 1 64 -64 Z" fill="#6F5BC4"/>
+      <path d="M280 0 V112 a64 64 0 0 1 -64 64 h-48 a64 64 0 0 1 -64 -64 v-48 a64 64 0 0 1 64 -64 Z" fill="#9CCFB4" clip-path="url(#hc)"/>
+    </g>
+  </svg>`;
+}
+
 function renderHome() {
   const t = S.talk;
+  const P = esc(S.partner.name);
   const talkNote = t ? `Идёт разговор: ${esc(config.topics[t.topic])}, ступень ${t.stage} из 5`
-    : S.open && S.open.from === S.me.id ? `Ждём ответа ${esc(S.partner.name)}`
-    : S.pair.myTurn ? 'Задать вопрос или сказать своё, по очереди' : `Сейчас очередь ${esc(S.partner.name)}`;
+    : S.open && S.open.from === S.me.id ? `Ждём ответа ${P}`
+    : S.pair.myTurn ? 'Задать вопрос или сказать своё, по очереди' : `Сейчас очередь ${P}`;
+  // Крупный статус сверху: что сейчас главное для пары.
+  const pending = (S.signals?.pending || []).length;
+  const o = S.open;
+  const forMe = o && ((o.kind === 'together' && !o.answeredBy.includes(S.me.id)) || (o.to === S.me.id && o.kind !== 'together'));
+  const [title, sub, pill] = pending ? [`${P}<br>подаёт знак`, 'Ответить можно одной кнопкой', '<button class="pill" data-scrollsig>Посмотреть</button>']
+    : forMe ? ['Вас ждёт<br>вопрос', `${P} ${o.kind === 'say' ? 'хочет вам что-то сказать' : 'задал(а) вам вопрос'}`, '<button class="pill" data-gotalk>Ответить</button>']
+    : t ? ['Идёт<br>разговор', `${esc(config.topics[t.topic])} · ступень ${t.stage} из 5`, '<button class="pill" data-gotalk>Продолжить</button>']
+    : ['Как вы<br>сейчас?', 'Когда чуть остыли, начните с малого', ''];
+  const streak = S.daily?.streak || 0;
+  const stat = t ? ['Разговор, ступень', `${t.stage}<small> / 5</small>`]
+    : streak ? ['Страница дня подряд', `${streak}<small> ${plural(streak, 'день', 'дня', 'дней')}</small>`]
+    : ['Страница дня', `<small>${S.daily?.mine == null ? 'ждёт ваш ответ ›' : 'открыть ›'}</small>`];
   $app.innerHTML = `
-    ${pauseAskCard()}${incomingSignals()}${waitingCards()}${replyCard()}${stepCard()}${ideasCard()}${lastTalkCard()}
-    <div class="home">
-      <p class="eyebrow">Когда чуть остыли</p>
-      <h1>Как вы сейчас?</h1>
-      <p class="lead">Можно просто дать знак, без слов. А когда будете готовы, поговорить по шагам.</p>
-      <button class="big-choice" data-gosign>
-        <span class="ic">${ICON.sign}</span>
-        <span><b>Дать знак</b><small>Одна кнопка: «мне нужно остыть», «давай помиримся», «скучаю»</small></span>
-      </button>
+    <section class="hero">
+      <div class="hero-top"><img src="brand/znak.svg" alt="" /><span>Прочитай меня</span></div>
+      <h1 class="hero-title">${title}</h1>
+      <p class="hero-sub">${sub}</p>
+      ${pill}
+      ${heroScene(t ? t.stage / 5 : 1, !t)}
+    </section>
+    <section class="panel">
       <button class="big-choice" data-gotalk>
         <span class="ic">${ICON.talk}</span>
         <span><b>Поговорить</b><small>${talkNote}</small></span>
       </button>
-    </div>
-    ${mySignals()}`;
+      <button class="big-choice" data-gosign>
+        <span class="ic">${ICON.sign}</span>
+        <span><b>Дать знак</b><small>Одна кнопка: «мне нужно остыть», «давай помиримся», «скучаю»</small></span>
+      </button>
+      <button class="stat" ${t ? 'data-gotalk' : 'data-go="daily"'}><span>${stat[0]}</span><b>${stat[1]}</b></button>
+      <div class="quick">
+        <div class="quick-row">${QUICK_SIGNS.filter(([k]) => config.signals?.[k]).map(([k, l]) => `<button data-sigopen="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${SIG_ICON[k]}</svg><span>${l}</span></button>`).join('')}</div>
+        <button class="quick-more" data-gosign>Все знаки <span aria-hidden="true">›</span></button>
+      </div>
+      <div id="homecards">${pauseAskCard()}${incomingSignals()}${waitingCards()}${replyCard()}${stepCard()}${ideasCard()}${lastTalkCard()}${mySignals()}</div>
+    </section>`;
   bindReply();
   bindSignalInputs();
 }
@@ -825,6 +879,7 @@ $app.addEventListener('click', async (e) => {
   if (e.target.closest('[data-gohome]')) { view = 'home'; sigForm = null; showSummary = false; window.scrollTo(0, 0); return render(); }
   if (e.target.closest('[data-gotalk]')) { goTalk(); window.scrollTo(0, 0); return render(); }
   if (e.target.closest('[data-gosign]')) { view = 'signal'; window.scrollTo(0, 0); return render(); }
+  if (e.target.closest('[data-scrollsig]')) { document.querySelector('#homecards .signal.in')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   if (e.target.closest('[data-tochat]')) { e.preventDefault(); return tg.close(); }
   const el = e.target.closest('[data-talkopen],[data-talkclose],[data-talkstart],[data-topic],[data-formtemp],[data-settemp],[data-retemp],[data-summary],[data-summaryclose],[data-check]');
   if (!el) return;
@@ -1201,6 +1256,9 @@ function setupBackButton() {
 }
 function afterRender() {
   saveDrafts();
+  const home = Boolean(S && S.partner && S.me?.tone && !S.me.safety && !solo && tab === 'game' && view === 'home' && !sigForm);
+  document.documentElement.classList.toggle('home-mode', home);
+  if (inTelegram) try { const c = home ? '#173C38' : getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(); tg.setHeaderColor(c); } catch {}
   if (!inTelegram || !tg.BackButton || !tg.isVersionAtLeast?.('6.1')) return;
   try { backTarget() ? tg.BackButton.show() : tg.BackButton.hide(); } catch {}
 }
