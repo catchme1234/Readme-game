@@ -272,3 +272,9 @@ button.quick-more span { color: var(--ink-muted); }
 :root[data-theme="dark"] .mark-l { display: none !important; } :root[data-theme="dark"] .mark-d { display: block !important; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) .mark-l { display: none !important; } :root:not([data-theme]) .mark-d { display: block !important; } }
 #brand img, .hero-top img { border-radius: 50%; }
+
+/* «Инструкция ко мне» и «Тайная кнопка мира» */
+.mlabel { display: block; font-weight: 600; margin: 12px 0 6px; }
+.manual-hint { border-left: 3px solid var(--love); }
+.manual-hint.inline { background: var(--surface-sunk); border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 12px; }
+.peace.match { background: var(--love-soft); border-color: var(--love); }
