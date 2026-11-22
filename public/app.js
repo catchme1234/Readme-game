@@ -176,7 +176,7 @@ const QUICK_SIGNS = [['cool', 'Остыть'], ['miss', 'Скучаю'], ['makeu
 // Сцена главной: тёплые холмы, деревья в цветах бренда, знак «Уголки» и дуга —
 // сколько ступеней разговора пройдено (без разговора дуга целая и мятная: всё спокойно).
 function heroScene(progress, calm) {
-  const r = 92, cx = 195, cy = 196, len = Math.PI * r;
+  const r = 88, cx = 190, cy = 182, len = Math.PI * r;
   return `<svg class="scene" viewBox="0 0 390 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
     <polygon class="beam" points="250,0 390,0 390,300 120,300"/>
     <path d="M0 210 C70 170 130 190 190 175 S320 150 390 170 V300 H0z" class="hill1"/>
@@ -187,7 +187,8 @@ function heroScene(progress, calm) {
     <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" class="arc-track" fill="none" stroke-width="10" stroke-linecap="round"/>
     <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" class="arc ${calm ? 'calm' : ''}" fill="none" stroke-width="10" stroke-linecap="round"
       stroke-dasharray="${(len * progress).toFixed(1)} ${len.toFixed(1)}"/>
-    <g transform="translate(135 150) scale(.39)">
+    <circle class="plate" cx="190" cy="182" r="64"/>
+    <g transform="translate(144 136) scale(.33)">
       <defs><clipPath id="hc"><path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z"/></clipPath></defs>
       <path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z" fill="#E2685A"/>
       <path d="M280 0 V112 a64 64 0 0 1 -64 64 h-48 a64 64 0 0 1 -64 -64 v-48 a64 64 0 0 1 64 -64 Z" fill="#6F5BC4"/>
