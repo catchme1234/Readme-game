@@ -114,7 +114,7 @@ function renderSummary() {
       <p class="muted">${t.questions} ${plural(t.questions, 'вопрос', 'вопроса', 'вопросов')} · ${esc(config.topics[t.topic])}</p></div>
     ${waiting ? `
       <div class="card"><p class="muted">Вы написали:</p><div class="msgtext">${esc(t.heardMine)}</div></div>
-      <div class="card hero"><div class="big"><img src="brand/znak.svg" alt="" /></div><h1>Ждём ${esc(S.partner.name)}</h1>
+      <div class="card hero"><div class="big"><img class="mark-l" src="brand/znak-round.svg" alt="" /><img class="mark-d" src="brand/znak-round-dark.svg" alt="" /></div><h1>Ждём ${esc(S.partner.name)}</h1>
         <p class="muted">Итог откроется, когда ${esc(S.partner.name)} тоже напишет, что услышал(а).</p></div>
       <button class="ghost" data-summaryclose>Вернуться к вопросам</button>` : `
     <div class="card">
@@ -187,13 +187,8 @@ function heroScene(progress, calm) {
     <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" class="arc-track" fill="none" stroke-width="10" stroke-linecap="round"/>
     <path d="M${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" class="arc ${calm ? 'calm' : ''}" fill="none" stroke-width="10" stroke-linecap="round"
       stroke-dasharray="${(len * progress).toFixed(1)} ${len.toFixed(1)}"/>
-    <circle class="plate" cx="190" cy="182" r="64"/>
-    <g transform="translate(144 136) scale(.33)">
-      <defs><clipPath id="hc"><path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z"/></clipPath></defs>
-      <path d="M0 280 V168 a64 64 0 0 1 64 -64 h48 a64 64 0 0 1 64 64 v48 a64 64 0 0 1 -64 64 Z" fill="#E2685A"/>
-      <path d="M280 0 V112 a64 64 0 0 1 -64 64 h-48 a64 64 0 0 1 -64 -64 v-48 a64 64 0 0 1 64 -64 Z" fill="#6F5BC4"/>
-      <path d="M280 0 V112 a64 64 0 0 1 -64 64 h-48 a64 64 0 0 1 -64 -64 v-48 a64 64 0 0 1 64 -64 Z" fill="#9CCFB4" clip-path="url(#hc)"/>
-    </g>
+    <image class="mark-l" href="brand/znak-round.svg" x="114" y="106" width="152" height="152"/>
+    <image class="mark-d" href="brand/znak-round-dark.svg" x="114" y="106" width="152" height="152"/>
   </svg>`;
 }
 
@@ -217,7 +212,7 @@ function renderHome() {
     : ['Страница дня', `<small>${S.daily?.mine == null ? 'ждёт ваш ответ ›' : 'открыть ›'}</small>`];
   $app.innerHTML = `
     <section class="hero">
-      <div class="hero-top"><img src="brand/znak.svg" alt="" /><span>Прочитай меня</span></div>
+      <div class="hero-top"><img class="mark-l" src="brand/znak-round.svg" alt="" /><img class="mark-d" src="brand/znak-round-dark.svg" alt="" /><span>Прочитай меня</span></div>
       <h1 class="hero-title">${title}</h1>
       <p class="hero-sub">${sub}</p>
       ${pill}
@@ -374,7 +369,7 @@ function renderStart() {
   $app.innerHTML = `
     <div class="welcome">
       <p class="eyebrow">Для момента, когда чуть остыли</p>
-      <div class="art"><img src="brand/znak.svg" alt="Знак «Прочитай меня»: две реплики идут навстречу друг другу" /></div>
+      <div class="art"><img class="mark-l" src="brand/znak-round.svg" alt="Знак «Прочитай меня»" /><img class="mark-d" src="brand/znak-round-dark.svg" alt="Знак «Прочитай меня»" /></div>
       <h1>Начать разговор<br>можно мягко.</h1>
       <p class="lead"><b>Прочитай меня, а я тебя.</b> Самая острая ссора позади, но слова ещё не находятся. «Прочитай меня» помогает начать с малого: дать знак одной кнопкой, а потом поговорить по шагам, задавая друг другу вопросы по очереди.</p>
       ${join ? `<div class="card warm invite"><b>Вас пригласили в «Прочитай меня»</b>
@@ -423,7 +418,7 @@ function renderTonePick(first) {
   const tones = Object.entries(config.tones);
   const ins = S.insights;
   $app.innerHTML = `
-    ${first ? '<div class="card hero"><div class="big"><img src="brand/znak.svg" alt="" /></div><h1>Какие вопросы вам ближе?</h1><p class="muted">Партнёр увидит ваш выбор и сможет подстроиться. Поменять можно в любой момент.</p></div>' : ''}
+    ${first ? '<div class="card hero"><div class="big"><img class="mark-l" src="brand/znak-round.svg" alt="" /><img class="mark-d" src="brand/znak-round-dark.svg" alt="" /></div><h1>Какие вопросы вам ближе?</h1><p class="muted">Партнёр увидит ваш выбор и сможет подстроиться. Поменять можно в любой момент.</p></div>' : ''}
     <div class="card">
       <h2>Мой тон</h2>
       <div class="chips">${tones.map(([k, t]) => `<button class="chip ${S.me.tone === k ? 'on' : ''}" data-tone="${k}">${t.label}</button>`).join('')}</div>
@@ -477,7 +472,7 @@ function renderGame() {
     return;
   }
   if (!S.pair.myTurn) {
-    $app.innerHTML = `${lastTalkCard()}${replyCard()}${talkBar()}${startTalkCard()}<div class="card hero"><div class="big"><img src="brand/znak.svg" alt="" /></div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
+    $app.innerHTML = `${lastTalkCard()}${replyCard()}${talkBar()}${startTalkCard()}<div class="card hero"><div class="big"><img class="mark-l" src="brand/znak-round.svg" alt="" /><img class="mark-d" src="brand/znak-round-dark.svg" alt="" /></div><h1>Сейчас ход ${esc(S.partner.name)}</h1>
       <p class="muted">Скоро вам придёт вопрос.</p></div>${dailyHint()}${partnerMessageCard()}${messageHint()}${sideHint()}`;
     bindReply();
     return;
@@ -718,7 +713,7 @@ function renderTogether(o) {
       <div class="pair-status"><span class="${mine ? 'ok' : ''}">${mine ? '✓' : '…'} Вы</span><span class="${theirs ? 'ok' : ''}">${theirs ? '✓' : '…'} ${esc(S.partner.name)}</span></div>
     </div>`;
   if (mine) {
-    $app.innerHTML = `${head}<div class="card hero"><div class="big"><img src="brand/znak.svg" alt="" /></div><h1>Ваша страница пока закрыта</h1>
+    $app.innerHTML = `${head}<div class="card hero"><div class="big"><img class="mark-l" src="brand/znak-round.svg" alt="" /><img class="mark-d" src="brand/znak-round-dark.svg" alt="" /></div><h1>Ваша страница пока закрыта</h1>
       <p class="muted">Ответы откроются одновременно, когда ответит ${esc(S.partner.name)}. Мы пришлём уведомление.</p></div>`;
     return;
   }
