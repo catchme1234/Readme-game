@@ -24,7 +24,7 @@ let lastJson = '';
 let tab = 'game';
 let demoUser = localStorageGet('demoUser') || 'demoA';
 // Черновики живут здесь, чтобы обновления не стирали набранный текст.
-const freshCompose = (mode = 'own') => ({ mode, tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own', why: '', together: false });
+const freshCompose = (mode = 'own') => ({ mode, tone: null, text: '', picked: null, suggestions: null, loading: false, source: 'own', why: '', together: false, mirror: false });
 let compose = freshCompose();
 let replyDraft = '';
 let letterDraft = null;   // null — форма письма закрыта
@@ -54,9 +54,25 @@ function talkBar() {
     ${t.paused ? `<div class="pause"><b>Пауза.</b> ${t.paused.mine ? 'Вы' : esc(S.partner.name)} остываете, вернётесь ${esc(t.paused.when)}. Всё сказанное сохранено.${t.paused.mine ? '<button class="ghost" data-resume style="margin-top:8px">Я готов(а) продолжить</button>' : ''}</div>` : ''}
     ${t.repeat && !t.deep ? `<div class="repeat"><b>Это уже ${t.repeat}-й разговор про «${esc(config.topics[t.topic].toLowerCase())}».</b> Хотите поговорить о теме целиком, а не только о последнем случае? <button data-deep="1" style="margin-top:8px">Да, о теме целиком</button></div>` : ''}
     ${t.deep ? '<p class="muted" style="margin:8px 0 0">Говорим о теме целиком: первыми в библиотеке идут вопросы про саму тему.</p>' : ''}
+    ${stageHelp(t)}
+    ${t.hot ? '<p class="muted" style="margin:8px 0 0">Пока кому-то из вас горячо, игривые и самые глубокие вопросы спрятаны.</p>' : ''}
     <button class="${ready || t.partnerHeard ? '' : 'ghost'}" data-summary style="margin-top:12px">Подвести итог</button>
-    ${t.paused ? '' : '<button class="ghost" data-sigopen="cool">Мне нужно остыть</button>'}
+    ${t.paused ? '' : '<button class="ghost" data-sigopen="cool">Пауза</button><p class="muted" style="margin:4px 0 0;font-size:12px">Остыть и вернуться к разговору не раньше чем через 20 минут.</p>'}
   </div>`;
+}
+
+// Подсказки ступени: слова-чувства, вопрос к себе, пересказ, извинение.
+function stageHelp(t) {
+  const P = esc(S.partner.name);
+  if (t.stage === 2) return `<div class="sep"></div><p style="margin:0 0 6px"><b>Каким словом назвать, что с вами?</b> <span class="muted">Нажмите, и слово встанет в ход «Сказать».</span></p>
+    <div class="chips">${config.feelWords.map((w, i) => `<button class="chip" data-feelword="${i}">${esc(w)}</button>`).join('')}</div>`;
+  if (t.stage === 4) return `<div class="sep"></div><p style="margin:0"><b>Вопрос себе:</b> ${esc(config.selfQ)}</p>
+    <p class="muted" style="margin:4px 0 8px">Подумайте наедине. Если захотите, скажите об этом ${P}.</p><button class="ghost" data-selfsay>Сказать об этом</button>
+    ${t.mirroredMine
+      ? (t.partnerMirrored ? '' : `<p class="muted" style="margin:10px 0 0">Вы пересказали, что услышали. Когда ${P} тоже перескажет, перейдёте к маленькому шагу.</p>`)
+      : `<p style="margin:12px 0 6px"><b>Перед маленьким шагом каждый один раз пересказывает, что услышал(а).</b> <span class="muted">Так видно, что вас поняли верно.</span></p><button data-mirror>Что я услышал(а)</button>`}`;
+  if (t.stage === 5) return `<div class="sep"></div><p style="margin:0 0 6px"><b>Если есть за что, извинитесь конкретно.</b> <span class="muted">Назовите свой поступок, без «мне жаль, что ты так понял(а)».</span></p><button class="ghost" data-sorry>Прости, что я…</button>`;
+  return '';
 }
 
 function tempChips(cur, attr) {
@@ -93,13 +109,15 @@ function lastTalkCard() {
   const fresh = Date.now() - t.endedAt < 2 * 86400000;
   if (!fresh && !t.checkDue) return '';
   const heard = Object.entries(t.heard).sort(([a]) => (a === S.me.id ? -1 : 1))
-    .map(([m, h]) => `<p style="margin:4px 0"><b>${m === S.me.id ? 'Вы' : esc(S.partner.name)} услышали:</b> ${esc(h)}</p>`).join('');
+    .map(([m, h]) => `<p style="margin:4px 0"><b>${m === S.me.id ? 'Вы услышали' : `${esc(S.partner.name)} услышал(а)`}:</b> ${esc(h)}</p>`).join('');
   const check = t.checkDue ? `
     <div class="sep"></div><b>Прошло 3 дня. Получается?</b>
     <div class="rating" style="margin-top:8px"><button data-check="yes">👍 Да</button><button data-check="partly">Частично</button><button data-check="no">👎 Не очень</button></div>` : '';
   return `<div class="card warm"><p class="muted">Итог разговора «${esc(config.topics[t.topic])}» · ${t.questions} ${plural(t.questions, 'вопрос', 'вопроса', 'вопросов')}${t.myTempStart ? ` · ваш градус ${t.myTempStart} → ${t.myTempEnd}` : ''}</p>
     ${heard}
     ${t.step ? `<p style="margin:10px 0 0"><b>Наш маленький шаг:</b> ${esc(t.step)}</p>` : ''}
+    ${Object.entries(t.values || {}).sort(([a]) => (a === S.me.id ? -1 : 1)).map(([m, v]) => `<p style="margin:8px 0 0"><b>${m === S.me.id ? 'Вы цените' : `${esc(S.partner.name)} ценит`}:</b> ${esc(v)}</p>`).join('')}
+    ${fresh && !t.checkDue ? '<p style="margin:12px 0 0">Если оба хотите, обнимитесь.</p>' : ''}
     ${t.partnerHelps ? `<p class="muted" style="margin:10px 0 0">${esc(S.partner.name)} помогает помириться: ${esc(t.partnerHelps)}</p>` : ''}
     ${check}
   </div>`;
@@ -107,7 +125,7 @@ function lastTalkCard() {
 
 function renderSummary() {
   const t = S.talk;
-  summary ??= { heard: '', step: t.step || '' };
+  summary ??= { heard: '', step: t.step || '', value: '' };
   const waiting = t.heardMine && !t.heard;
   $app.innerHTML = `
     <div class="card warm"><h1>Итог разговора</h1>
@@ -124,6 +142,9 @@ function renderSummary() {
       <h2 style="margin-top:14px">Наш маленький шаг</h2>
       <p class="muted">Одно конкретное действие. Через 3 дня бот спросит у вас обоих, получается ли.${t.step ? ' Можно поправить то, что предложил(а) партнёр.' : ''}</p>
       <textarea id="step" maxlength="500" style="min-height:70px" placeholder="Например: если задерживаюсь, пишу до 18:00">${esc(summary.step)}</textarea>
+      <h2 style="margin-top:14px">Что я ценю в тебе</h2>
+      <p class="muted">Одна вещь, за которую вы благодарны ${esc(S.partner.name)}, даже после этого спора. Можно пропустить.</p>
+      <textarea id="value" maxlength="500" style="min-height:60px" placeholder="Я ценю, что ты…">${esc(summary.value || '')}</textarea>
       <button id="finish" style="margin-top:10px">Сохранить итог</button>
       <button class="ghost" data-summaryclose>Ещё поговорим</button>
     </div>`}`;
@@ -132,6 +153,8 @@ function renderSummary() {
     h.oninput = () => (summary.heard = h.value);
     const st = document.getElementById('step');
     st.oninput = () => (summary.step = st.value);
+    const vl = document.getElementById('value');
+    vl.oninput = () => (summary.value = vl.value);
     document.getElementById('finish').onclick = async () => {
       try {
         const r = await api('/api/talk/finish', summary);
@@ -288,6 +311,7 @@ function haptic(type = 'light') { try { tg?.HapticFeedback?.impactOccurred(type)
 const toneLabel = (t) => (config.tones[t] ? config.tones[t].label : 'не выбран');
 const srcLabel = { own: 'свой', library: 'из библиотеки', ai: 'от ИИ' };
 const srcBadge = (q) => (q.kind === 'say' ? 'сказал(а)' : q.kind === 'together' ? 'вдвоём' : q.edited ? 'своими словами' : srcLabel[q.source]);
+const BRIDGES = ['Мне сейчас тяжело.', 'Давай начнём сначала.', 'Ты мне важен(а), даже когда мы спорим.'];
 const SAY_STARTERS = ['Мне важно…', 'Мне жаль, что…', 'Я ценю, что ты…', 'Я боюсь, что…', 'Я прошу…', 'Мне не хватает…'];
 
 // Посыл партнёра: его собственные слова, которые видны перед вопросами.
@@ -543,8 +567,10 @@ function sideHint() {
 }
 
 function renderCompose() {
+  const hot = Boolean(S.talk?.hot);
   compose.tone ??= S.partner.tone || 'gentle';
-  const tones = Object.entries(config.tones);
+  if (hot && compose.tone === 'playful') compose.tone = 'gentle';
+  const tones = Object.entries(config.tones).filter(([k]) => !(hot && k === 'playful'));
   const m = compose.mode;
   $app.innerHTML = `
     ${lastTalkCard()}${talkBar()}${startTalkCard()}
@@ -567,14 +593,18 @@ function renderCompose() {
   if (m === 'own') {
     pane.innerHTML = `
       <textarea id="qtext" placeholder="Например: Что тебе было бы важно услышать от меня сейчас?">${esc(compose.text)}</textarea>
+      <p class="muted harsh" id="nvc" ${REPROACH.test(compose.text) ? '' : 'hidden'}>«Ты всегда», «ты опять» обычно звучат как упрёк. Попробуйте по четырём шагам: «Я вижу…» (что случилось, без оценки), «Я чувствую…», «Мне нужно…», «Прошу тебя…».</p>
       <div class="chips">${tones.map(([k, t]) => `<button class="chip ${compose.tone === k ? 'on' : ''}" data-ctone="${k}">${t.label}</button>`).join('')}</div>
       ${whyField()}
       <button id="send">Отправить вопрос</button>`;
   } else if (m === 'say') {
     pane.innerHTML = `
+      ${compose.mirror ? `<p><b>Что я услышал(а).</b> <span class="muted">Перескажите своими словами, что сказал(а) ${esc(S.partner.name)}, и спросите, верно ли поняли. Без оценок и ответов.</span></p>` : `
       <p class="muted">Начните с заготовки, а дальше своими словами:</p>
       <div class="chips">${SAY_STARTERS.map((t, i) => `<button class="chip" data-starter="${i}">${esc(t)}</button>`).join('')}</div>
+      ${S.talk ? `<p class="muted" style="margin-top:8px">Фразы-мостики, если спор разгорается:</p><div class="chips">${BRIDGES.map((t, i) => `<button class="chip" data-bridge="${i}">${esc(t)}</button>`).join('')}</div>` : ''}`}
       <textarea id="qtext" maxlength="1000" placeholder="Например: Мне важно знать заранее, если ты задерживаешься, потому что я жду тебя весь вечер.">${esc(compose.text)}</textarea>
+      <p class="muted harsh" id="nvc" ${REPROACH.test(compose.text) ? '' : 'hidden'}>«Ты всегда», «ты опять» обычно звучат как упрёк. Попробуйте по четырём шагам: «Я вижу…» (что случилось, без оценки), «Я чувствую…», «Мне нужно…», «Прошу тебя…».</p>
       <button id="send" style="margin-top:10px">Сказать ${esc(S.partner.name)}</button>`;
   } else if (m === 'library') {
     if (library.tone !== compose.tone) { loadLibrary(); pane.innerHTML = '<p class="muted">Загрузка…</p>'; }
@@ -621,6 +651,7 @@ function bindCompose() {
   $app.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => {
     compose.mode = b.dataset.mode; compose.picked = null;
     if (compose.mode === 'own' || compose.mode === 'say') compose.text = '';
+    compose.mirror = false;
     render();
   }));
   $app.querySelectorAll('[data-ctone]').forEach((b) => (b.onclick = () => {
@@ -634,7 +665,13 @@ function bindCompose() {
     compose.picked = compose.text = compose.suggestions[b.dataset.sug]; render();
   }));
   const ta = document.getElementById('qtext');
-  if (ta) ta.oninput = () => (compose.text = ta.value);
+  const nvc = document.getElementById('nvc');
+  if (ta) ta.oninput = () => { compose.text = ta.value; if (nvc) nvc.hidden = !REPROACH.test(ta.value); };
+  $app.querySelectorAll('[data-bridge]').forEach((b) => (b.onclick = () => {
+    const st = BRIDGES[b.dataset.bridge];
+    compose.text = compose.text.trim() ? `${compose.text.trim()} ${st}` : st;
+    render();
+  }));
   const tg2 = document.getElementById('together');
   if (tg2) tg2.onchange = () => (compose.together = tg2.checked);
   const why = document.getElementById('qwhy');
@@ -661,8 +698,8 @@ function bindCompose() {
     const edited = Boolean(compose.picked) && compose.text.trim() !== compose.picked.trim();
     try {
       send.disabled = true;
-      await api('/api/question', { kind: m === 'say' ? 'say' : compose.together ? 'together' : 'ask', text: compose.text, tone: compose.tone, source, why: compose.why, edited });
-      haptic('medium'); toast(m === 'say' ? 'Отправлено' : compose.together ? 'Вопрос отправлен. Теперь ответьте и вы' : 'Вопрос отправлен');
+      await api('/api/question', { kind: m === 'say' ? 'say' : compose.together ? 'together' : 'ask', text: compose.text, tone: compose.tone, source, why: compose.why, edited, mirror: m === 'say' && compose.mirror });
+      haptic('medium'); toast(m === 'say' && compose.mirror ? `Отправлено. ${S.partner.name} скажет, верно ли вы поняли` : m === 'say' ? 'Отправлено' : compose.together ? 'Вопрос отправлен. Теперь ответьте и вы' : 'Вопрос отправлен');
       compose = freshCompose(m === 'say' ? 'own' : m);
       refresh(true);
     } catch (e) { toast(e.message); send.disabled = false; }
@@ -1078,7 +1115,7 @@ function renderSafety() {
 }
 
 async function onSignalClick(e) {
-  const el = e.target.closest('[data-sigopen],[data-sclose],[data-stime],[data-ssend],[data-rpick],[data-rcancel],[data-rtime],[data-rsend],[data-stepsave],[data-ideasclose],[data-mk],[data-mksave],[data-mkskip],[data-solo],[data-solotemp],[data-feelpick],[data-solonext],[data-soloback],[data-solosend],[data-soloclose],[data-safeok],[data-deep],[data-resume],[data-saynow],[data-back],[data-moreopen],[data-mtime],[data-more]');
+  const el = e.target.closest('[data-sigopen],[data-sclose],[data-stime],[data-ssend],[data-rpick],[data-rcancel],[data-rtime],[data-rsend],[data-stepsave],[data-ideasclose],[data-mk],[data-mksave],[data-mkskip],[data-solo],[data-solotemp],[data-feelpick],[data-solonext],[data-soloback],[data-solosend],[data-soloclose],[data-safeok],[data-deep],[data-resume],[data-saynow],[data-back],[data-moreopen],[data-mtime],[data-more],[data-feelword],[data-selfsay],[data-mirror],[data-sorry]');
   if (!el) return;
   e.preventDefault();
   const d = el.dataset;
@@ -1126,11 +1163,24 @@ async function onSignalClick(e) {
     else if ('deep' in d) { await api('/api/talk/deep', { on: true }); toast('Говорим о теме целиком'); library = { tone: null, items: [] }; return refresh(true); }
     else if ('resume' in d) { await api('/api/talk/resume', {}); toast('Продолжаем'); return refresh(true); }
     else if ('saynow' in d) { compose = freshCompose('say'); view = 'talk'; }
+    else if (['feelword', 'selfsay', 'mirror', 'sorry'].some((k) => k in d) && (!S.pair.myTurn || S.open)) return toast(`Это можно сделать в свой ход. Сейчас ход ${S.partner.name}`);
+    else if ('feelword' in d) {
+      const w = config.feelWords[d.feelword];
+      if (compose.mode !== 'say' || compose.mirror) compose = freshCompose('say');
+      compose.text = compose.text.trim() ? `${compose.text.trim().replace(/\.$/, '')}, ${w}.` : `Я сейчас чувствую: ${w}.`;
+    }
+    else if ('selfsay' in d) { compose = freshCompose('say'); compose.text = 'Мне кажется, с моей стороны масла в огонь подлило то, что я '; }
+    else if ('mirror' in d) { compose = freshCompose('say'); compose.mirror = true; compose.text = 'Я услышал(а), что тебе '; }
+    else if ('sorry' in d) { compose = freshCompose('say'); compose.text = 'Прости, что я '; }
     else if ('moreopen' in d) moreTimePick = '60';
     else if ('mtime' in d) moreTimePick = d.mtime;
     else if ('more' in d) { await api('/api/signal/more', { id: d.more, time: moreTimePick }); toast(`Хорошо, напомним ${config.times[moreTimePick]}`); moreTimePick = null; return refresh(true); }
     else if ('back' in d) { await api('/api/signal/more', { id: d.back, back: true }); toast('Продолжаем'); moreTimePick = null; return refresh(true); }
     haptic(); render();
+    if (['feelword', 'selfsay', 'mirror', 'sorry'].some((k) => k in d)) {
+      const t = document.getElementById('qtext');
+      if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView({ block: 'center' }); }
+    }
   } catch (err) { toast(err.message); }
 }
 
@@ -1203,7 +1253,7 @@ function draftSnapshot() {
   };
 }
 function hasUnsentText() {
-  return [compose.text, compose.why, replyDraft, letterDraft, msgDraft, dailyDraft, summary?.heard, summary?.step, answer.text, stepDraft, solo?.important, sigForm?.note,
+  return [compose.text, compose.why, replyDraft, letterDraft, msgDraft, dailyDraft, summary?.heard, summary?.step, summary?.value, answer.text, stepDraft, solo?.important, sigForm?.note,
     S && sideDraft !== null && sideDraft !== (S.me.situation || '') ? sideDraft : '']
     .some((v) => typeof v === 'string' && v.trim());
 }

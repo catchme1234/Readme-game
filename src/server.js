@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
 import * as S from './store.js';
-import { LIBRARY, TONES, STAGES, TOPICS, STAGE_Q } from './library.js';
+import { LIBRARY, TONES, STAGES, TOPICS, STAGE_Q, FEEL_WORDS, SELF_Q, isHot, safeTone, calmFilter } from './library.js';
 import * as T from './talk.js';
 import { suggestQuestions, aiEnabled } from './ai.js';
 import * as D from './daily.js';
@@ -407,6 +407,7 @@ function talkView(pair, uid, partner) {
     questions: S.pairQuestions(pair.id).length - t.qStart,
     heardMine: t.heard[uid] || null, partnerHeard: Boolean(t.heard[partner.id]),
     heard: bothHeard ? t.heard : null, step: t.step,
+    hot: isHot(t), mirroredMine: Boolean(t.mirrored?.[uid]), partnerMirrored: Boolean(t.mirrored?.[partner.id]),
     repeat: t.repeat || 0, deep: Boolean(t.deep), paused: t.paused && t.paused.until > Date.now() ? { mine: t.paused.by === uid, when: t.paused.when } : null,
   };
 }
@@ -416,7 +417,7 @@ function lastTalkView(pair, uid, partner) {
   if (!t || !partner) return null;
   return {
     id: t.id, topic: t.topic, endedAt: t.endedAt, questions: t.questions, step: t.step,
-    heard: t.heard, myTempStart: t.tempStart[uid] ?? null, myTempEnd: t.temps[uid] ?? null,
+    heard: t.heard, values: t.values || {}, myTempStart: t.tempStart[uid] ?? null, myTempEnd: t.temps[uid] ?? null,
     checkDue: Date.now() >= t.checkAt && !t.checks?.[uid],
     checks: t.checks || {},
     partnerHelps: makeupText(partner.id),
@@ -495,7 +496,7 @@ if (bot && USE_WEBHOOK) app.post(`/tg/${HOOK_SECRET}`, webhookCallback(bot, 'exp
 app.get('/health', (req, res) => res.send('ok'));
 
 app.get('/api/config', (req, res) => res.json({
-  demo: DEMO, aiEnabled, tones: TONES, stages: STAGES, topics: TOPICS, voice: Boolean(bot),
+  demo: DEMO, aiEnabled, tones: TONES, feelWords: FEEL_WORDS, selfQ: SELF_Q, stages: STAGES, topics: TOPICS, voice: Boolean(bot),
   signals: Object.fromEntries(Object.entries(G.SIGNALS).filter(([, g]) => !g.hidden).map(([k, g]) => [k, { emoji: g.emoji, label: g.label, time: Boolean(g.time) }])),
   times: G.TIMES, makeup: G.MAKEUP, help: HELP,
 }));
@@ -599,7 +600,7 @@ app.post('/api/pair/leave', (req, res) => {
 
 function applyFeel(pair, uid, f) {
   if (!pair.talk || !['better', 'same', 'worse'].includes(f)) return;
-  T.feel(pair.talk, uid, f);
+  T.feel(pair.talk, uid, f, pair.members);
   S.touch();
 }
 
@@ -612,25 +613,26 @@ function requireTurn(req, res) {
 }
 
 app.get('/api/library', (req, res) => {
-  const tone = req.query.tone in TONES ? req.query.tone : 'gentle';
-  const asked = new Set(req.user.pairId ? S.pairQuestions(req.user.pairId).map((q) => q.text) : []);
   const talk = req.user.pairId && S.getPair(req.user.pairId)?.talk;
+  const hot = isHot(talk);
+  const tone = safeTone(req.query.tone in TONES ? req.query.tone : 'gentle', hot);
+  const asked = new Set(req.user.pairId ? S.pairQuestions(req.user.pairId).map((q) => q.text) : []);
   // Во время разговора сначала идут вопросы текущей ступени.
-  const stageQs = talk ? STAGE_Q[talk.stage][tone].map((text) => ({ text, asked: asked.has(text), stage: talk.stage })) : [];
+  const stageQs = talk ? calmFilter(STAGE_Q[talk.stage][tone], hot).map((text) => ({ text, asked: asked.has(text), stage: talk.stage })) : [];
   // Разговор о теме целиком: сначала вопросы про саму тему.
-  if (talk?.deep) stageQs.unshift(...themeQuestions(tone, TOPICS[talk.topic]).map((text) => ({ text, asked: asked.has(text), theme: true })));
-  const rest = LIBRARY[tone].filter((t) => !stageQs.some((x) => x.text === t)).map((text) => ({ text, asked: asked.has(text) }));
-  res.json({ questions: [...stageQs, ...rest] });
+  if (talk?.deep) stageQs.unshift(...themeQuestions(tone, TOPICS[talk.topic], hot).map((text) => ({ text, asked: asked.has(text), theme: true })));
+  const rest = calmFilter(LIBRARY[tone], hot).filter((t) => !stageQs.some((x) => x.text === t)).map((text) => ({ text, asked: asked.has(text) }));
+  res.json({ questions: [...stageQs, ...rest], tone, hot });
 });
 
 app.post('/api/ai/suggest', async (req, res) => {
   const ctx = requireTurn(req, res);
   if (!ctx) return;
-  const tone = req.body.tone in TONES ? req.body.tone : ctx.partner.tone || 'gentle';
+  const tone = safeTone(req.body.tone in TONES ? req.body.tone : ctx.partner.tone || 'gentle', isHot(ctx.pair.talk));
   const users = { [req.user.id]: req.user, [ctx.partner.id]: ctx.partner };
   const history = S.pairQuestions(ctx.pair.id).map((q) => ({ ...q, fromName: users[q.from]?.name }));
   const talk = ctx.pair.talk;
-  const stage = talk ? { ...STAGES[talk.stage], topic: TOPICS[talk.topic], hot: Math.max(0, ...Object.values(talk.temps)) >= 4, deep: Boolean(talk.deep), repeat: talk.repeat || 0 } : null;
+  const stage = talk ? { ...STAGES[talk.stage], topic: TOPICS[talk.topic], hot: isHot(talk), deep: Boolean(talk.deep), repeat: talk.repeat || 0 } : null;
   const out = await suggestQuestions({ tone, asker: req.user, receiver: ctx.partner, history, stage });
   res.json(out);
 });
@@ -647,6 +649,13 @@ app.post('/api/question', (req, res) => {
   if (unsafe(req, res, text, why)) return;
   const edited = source !== 'own' && Boolean(req.body.edited);
   const q = S.addQuestion({ pairId: ctx.pair.id, from: req.user.id, to: ctx.partner.id, text, tone, source, kind, why, edited });
+  // «Что я услышал(а)»: пересказ отмечается в разговоре, без него на «Маленький шаг» не идём.
+  const talk = ctx.pair.talk;
+  if (talk && kind === 'say' && req.body.mirror) {
+    (talk.mirrored ??= {})[req.user.id] = true;
+    if (talk.stage === 4 && ctx.pair.members.every((m) => talk.mirrored[m])) talk.stage = 5;
+    S.touch();
+  }
   notify(ctx.partner.id, kind === 'say'
     ? `💬 ${req.user.name} хочет вам кое-что сказать. Откройте игру.`
     : kind === 'together'
@@ -772,9 +781,10 @@ app.post('/api/talk/finish', (req, res) => {
   if (!c.pair.talk) return res.status(400).json({ error: 'Нет разговора' });
   const heard = String(req.body.heard || '').trim().slice(0, 1000);
   const step = String(req.body.step || '').trim().slice(0, 500);
+  const value = String(req.body.value || '').trim().slice(0, 500);
   if (!heard) return res.status(400).json({ error: 'Напишите, что вы услышали' });
-  if (unsafe(req, res, heard, step)) return;
-  const done = T.finish(c.pair, req.user.id, heard, step, S.pairQuestions(c.pair.id).length);
+  if (unsafe(req, res, heard, step, value)) return;
+  const done = T.finish(c.pair, req.user.id, heard, step, S.pairQuestions(c.pair.id).length, value);
   if (done) S.track('talk_finished');
   S.touch();
   notify(c.partnerId, done
