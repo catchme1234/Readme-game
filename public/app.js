@@ -55,6 +55,7 @@ function talkBar() {
     ${t.repeat && !t.deep ? `<div class="repeat"><b>Это уже ${t.repeat}-й разговор про «${esc(config.topics[t.topic].toLowerCase())}».</b> Хотите поговорить о теме целиком, а не только о последнем случае? <button data-deep="1" style="margin-top:8px">Да, о теме целиком</button></div>` : ''}
     ${t.deep ? '<p class="muted" style="margin:8px 0 0">Говорим о теме целиком: первыми в библиотеке идут вопросы про саму тему.</p>' : ''}
     ${stageHelp(t)}
+    ${manualHint(manualKeyNow()).replace('class="card manual-hint"', 'class="manual-hint inline"')}
     ${t.hot ? '<p class="muted" style="margin:8px 0 0">Пока кому-то из вас горячо, игривые и самые глубокие вопросы спрятаны.</p>' : ''}
     <button class="${ready || t.partnerHeard ? '' : 'ghost'}" data-summary style="margin-top:12px">Подвести итог</button>
     ${t.paused ? '' : '<button class="ghost" data-sigopen="cool">Пауза</button><p class="muted" style="margin:4px 0 0;font-size:12px">Остыть и вернуться к разговору не раньше чем через 20 минут.</p>'}
@@ -225,7 +226,8 @@ function renderHome() {
   const pending = (S.signals?.pending || []).length;
   const o = S.open;
   const forMe = o && ((o.kind === 'together' && !o.answeredBy.includes(S.me.id)) || (o.to === S.me.id && o.kind !== 'together'));
-  const [title, sub, pill] = pending ? [`${P}<br>подаёт знак`, 'Ответить можно одной кнопкой', '<button class="pill" data-scrollsig>Посмотреть</button>']
+  const [title, sub, pill] = S.peace?.match ? ['Вы оба хотите<br>мириться', 'Вы оба тайно нажали кнопку мира', '<button class="pill" data-gotalk data-peaceseen>Поговорить</button>']
+    : pending ? [`${P}<br>подаёт знак`, 'Ответить можно одной кнопкой', '<button class="pill" data-scrollsig>Посмотреть</button>']
     : forMe ? ['Вас ждёт<br>вопрос', `${P} ${o.kind === 'say' ? 'хочет вам что-то сказать' : 'задал(а) вам вопрос'}`, '<button class="pill" data-gotalk>Ответить</button>']
     : t ? ['Идёт<br>разговор', `${esc(config.topics[t.topic])} · ступень ${t.stage} из 5`, '<button class="pill" data-gotalk>Продолжить</button>']
     : ['Как вы<br>сейчас?', 'Когда чуть остыли, начните с малого', ''];
@@ -255,7 +257,7 @@ function renderHome() {
         <div class="quick-row">${QUICK_SIGNS.filter(([k]) => config.signals?.[k]).map(([k, l]) => `<button data-sigopen="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${SIG_ICON[k]}</svg><span>${l}</span></button>`).join('')}</div>
         <button class="quick-more" data-gosign>Все знаки <span aria-hidden="true">›</span></button>
       </div>
-      <div id="homecards">${pauseAskCard()}${incomingSignals()}${waitingCards()}${replyCard()}${stepCard()}${ideasCard()}${lastTalkCard()}${mySignals()}</div>
+      <div id="homecards">${S.peace?.match ? peaceCard() : ''}${pauseAskCard()}${incomingSignals()}${manualKeyNow() ? manualHint(manualKeyNow()) : ''}${waitingCards()}${replyCard()}${stepCard()}${ideasCard()}${lastTalkCard()}${mySignals()}${S.peace?.match ? '' : peaceCard()}${!manualFilled(S.me.manual) && !t && !pending ? `<div class="card"><b>Инструкция ко мне</b><p class="muted" style="margin:6px 0 10px">Пара строк о том, что вам помогает в ссоре. ${P} прочитает их, когда будет трудно.</p><button class="ghost" data-go="side">Написать</button></div>` : ''}</div>
     </section>`;
   bindReply();
   bindSignalInputs();
@@ -265,12 +267,66 @@ function renderSignalView() {
   $app.innerHTML = `<button class="back" data-gohome>← Назад</button>
     <h1 style="margin-top:6px">Дать знак</h1>
     <p class="lead" style="margin-bottom:14px">${esc(S.partner.name)} получит сообщение в Telegram и сможет ответить одной кнопкой.</p>
+    ${peaceCard()}
     ${signalPanel().replace('<h2>Быстрый знак партнёру</h2>', '').replace(/<p class="muted">Одна кнопка, и[^<]*<\/p>/, '')}
     ${mySignals()}`;
   bindSignalInputs();
 }
 let answer = { text: '', rating: null };
 let sideDraft = null;
+let manualDraft = null;  // черновик «Инструкции ко мне»
+
+// ---------- «Инструкция ко мне» ----------
+const manualFilled = (m) => Object.keys(m || {}).length > 0;
+
+// Одна строчка из инструкции партнёра, подходящая к моменту.
+function manualHint(key) {
+  const m = S.partner?.manual || {};
+  const item = config.manual.find((x) => x.k === key && m[x.k]) || config.manual.find((x) => m[x.k]);
+  if (!item) return '';
+  return `<div class="card manual-hint"><p class="muted" style="margin:0">${esc(S.partner.name)} писал(а) в инструкции к себе:</p>
+    <p style="margin:6px 0 0"><b>${esc(item.q)}:</b> ${esc(m[item.k])}</p></div>`;
+}
+
+// Какая строчка нужна сейчас: по знаку партнёра или по ступени разговора.
+function manualKeyNow() {
+  const sig = (S.signals?.pending || [])[0];
+  if (sig) return { cool: 'calm', fight: 'calm', hurt: 'need', makeup: 'sign', sorry: 'need' }[sig.kind] || 'calm';
+  if (S.talk) return [null, 'calm', 'hurt', 'need', 'need', 'sign'][S.talk.stage];
+  return null;
+}
+
+function manualCard() {
+  manualDraft ??= { ...(S.me.manual || {}) };
+  return `<div class="card warm"><h1>Инструкция ко мне</h1>
+    <p class="muted">Заполните в спокойный день. Это <b>увидит ${esc(S.partner.name)}</b>, а в ссоре игра подскажет ${esc(S.partner.name)} одну подходящую строчку. Любой пункт можно пропустить.</p>
+    ${config.manual.map((x) => `<label class="mlabel" for="m-${x.k}">${esc(x.q)}…</label>
+      <textarea id="m-${x.k}" data-man="${x.k}" maxlength="300" style="min-height:60px" placeholder="${esc(x.hint)}">${esc(manualDraft[x.k] || '')}</textarea>`).join('')}
+    <button id="saveManual" style="margin-top:10px">${manualFilled(S.me.manual) ? 'Обновить инструкцию' : 'Сохранить инструкцию'}</button>
+  </div>`;
+}
+
+function partnerManualCard() {
+  const m = S.partner?.manual || {};
+  if (!manualFilled(m)) return `<div class="card"><p class="muted" style="margin:0">${esc(S.partner.name)} пока не написал(а) инструкцию к себе.</p></div>`;
+  return `<div class="card"><h2>Инструкция к ${esc(S.partner.name)}</h2>
+    ${config.manual.filter((x) => m[x.k]).map((x) => `<p style="margin:8px 0 0"><b>${esc(x.q)}:</b> ${esc(m[x.k])}</p>`).join('')}</div>`;
+}
+
+// ---------- «Тайная кнопка мира» ----------
+function peaceCard() {
+  const p = S.peace || {};
+  const P = esc(S.partner.name);
+  if (p.match) return `<div class="card peace match"><h2>Вы оба хотите мириться</h2>
+    <p style="margin:6px 0 10px">Вы оба тайно нажали кнопку мира. Самое трудное позади: вы на одной стороне.</p>
+    <div class="row"><button data-gotalk data-peaceseen>Поговорить</button><button class="ghost" data-peaceseen>Хорошо</button></div></div>`;
+  if (p.mine) return `<div class="card peace"><b>Вы тайно нажали «Я готов(а) мириться»</b>
+    <p class="muted" style="margin:6px 0 10px">${P} об этом не знает. Если ${P} тоже нажмёт, мы скажем вам обоим.</p>
+    <button class="ghost" data-peace="0">Отменить</button></div>`;
+  return `<div class="card peace"><b>Тайная кнопка мира</b>
+    <p class="muted" style="margin:6px 0 10px">Хотите мириться, но страшно сделать первый шаг? Нажмите тайно. ${P} узнает, только если тоже нажмёт.</p>
+    <button data-peace="1">Я готов(а) мириться</button></div>`;
+}
 let library = { tone: null, items: [] };
 
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -833,6 +889,7 @@ function renderSide() {
       <button id="saveMsg" style="margin-top:10px">${S.me.message ? 'Обновить посыл' : 'Отправить посыл'}</button>
     </div>
     ${partnerMessageCard()}
+    ${manualFilled(S.partner?.manual) ? partnerManualCard() + manualCard() : manualCard() + partnerManualCard()}
     <div class="card">
       <h1>Моя сторона</h1>
       <div class="private"><span>Этот текст читает <b>ИИ-помощник</b>, чтобы подбирать вопросы точнее. ${esc(S.partner.name)} его не увидит, и ИИ не будет его цитировать или пересказывать. Можно не заполнять.</span></div>
@@ -851,6 +908,13 @@ function renderSide() {
   document.getElementById('saveMsg').onclick = async () => {
     await api('/api/profile', { message: msgDraft }); haptic('medium');
     toast(msgDraft.trim() ? `Посыл отправлен ${S.partner.name}` : 'Посыл удалён'); refresh(true);
+  };
+  $app.querySelectorAll('[data-man]').forEach((el) => (el.oninput = () => (manualDraft[el.dataset.man] = el.value)));
+  document.getElementById('saveManual').onclick = async () => {
+    try {
+      await api('/api/profile', { manual: manualDraft }); haptic('medium');
+      toast(`Сохранено. ${S.partner.name} увидит вашу инструкцию`); manualDraft = null; refresh(true);
+    } catch (e) { toast(e.message); }
   };
   document.getElementById('save').onclick = async () => { await api('/api/profile', { situation: sideDraft }); toast('Сохранено'); refresh(true); };
   const clear = document.getElementById('clear');
@@ -1115,7 +1179,7 @@ function renderSafety() {
 }
 
 async function onSignalClick(e) {
-  const el = e.target.closest('[data-sigopen],[data-sclose],[data-stime],[data-ssend],[data-rpick],[data-rcancel],[data-rtime],[data-rsend],[data-stepsave],[data-ideasclose],[data-mk],[data-mksave],[data-mkskip],[data-solo],[data-solotemp],[data-feelpick],[data-solonext],[data-soloback],[data-solosend],[data-soloclose],[data-safeok],[data-deep],[data-resume],[data-saynow],[data-back],[data-moreopen],[data-mtime],[data-more],[data-feelword],[data-selfsay],[data-mirror],[data-sorry]');
+  const el = e.target.closest('[data-sigopen],[data-sclose],[data-stime],[data-ssend],[data-rpick],[data-rcancel],[data-rtime],[data-rsend],[data-stepsave],[data-ideasclose],[data-mk],[data-mksave],[data-mkskip],[data-solo],[data-solotemp],[data-feelpick],[data-solonext],[data-soloback],[data-solosend],[data-soloclose],[data-safeok],[data-deep],[data-resume],[data-saynow],[data-back],[data-moreopen],[data-mtime],[data-more],[data-feelword],[data-selfsay],[data-mirror],[data-sorry],[data-peace],[data-peaceseen]');
   if (!el) return;
   e.preventDefault();
   const d = el.dataset;
@@ -1163,6 +1227,15 @@ async function onSignalClick(e) {
     else if ('deep' in d) { await api('/api/talk/deep', { on: true }); toast('Говорим о теме целиком'); library = { tone: null, items: [] }; return refresh(true); }
     else if ('resume' in d) { await api('/api/talk/resume', {}); toast('Продолжаем'); return refresh(true); }
     else if ('saynow' in d) { compose = freshCompose('say'); view = 'talk'; }
+    else if ('peace' in d) {
+      const r = await api('/api/peace', { on: d.peace === '1' }); haptic('medium');
+      toast(r.matched ? 'Вы оба хотите мириться' : d.peace === '1' ? `Нажато тайно. ${S.partner.name} не узнает, пока не нажмёт сам(а)` : 'Отменено');
+      return refresh(true);
+    } else if ('peaceseen' in d) {
+      await api('/api/peace', { seen: true });
+      if ('gotalk' in d) goTalk();
+      return refresh(true);
+    }
     else if (['feelword', 'selfsay', 'mirror', 'sorry'].some((k) => k in d) && (!S.pair.myTurn || S.open)) return toast(`Это можно сделать в свой ход. Сейчас ход ${S.partner.name}`);
     else if ('feelword' in d) {
       const w = config.feelWords[d.feelword];
@@ -1213,7 +1286,7 @@ $app.addEventListener('click', onSignalClick);
       const b = e.target.closest('[data-demo]'); if (!b) return;
       demoUser = b.dataset.demo; localStorageSet('demoUser', demoUser); mark();
       compose = freshCompose(); sigForm = null; sigReply = null; solo = null; lastIdeas = null;
-      answer = { text: '', rating: null }; sideDraft = null; msgDraft = null; dailyDraft = ''; feelPick = null; talkForm = null; summary = null; showSummary = false; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game'; stepDraft = '';
+      answer = { text: '', rating: null }; sideDraft = null; manualDraft = null; msgDraft = null; dailyDraft = ''; feelPick = null; talkForm = null; summary = null; showSummary = false; replyDraft = ''; letterDraft = null; library = { tone: null, items: [] }; tab = 'game'; stepDraft = '';
       restoreDrafts();
       refresh(true);
     };
@@ -1253,7 +1326,7 @@ function draftSnapshot() {
   };
 }
 function hasUnsentText() {
-  return [compose.text, compose.why, replyDraft, letterDraft, msgDraft, dailyDraft, summary?.heard, summary?.step, summary?.value, answer.text, stepDraft, solo?.important, sigForm?.note,
+  return [compose.text, compose.why, replyDraft, letterDraft, msgDraft, dailyDraft, summary?.heard, summary?.step, summary?.value, ...Object.values(manualDraft || {}), answer.text, stepDraft, solo?.important, sigForm?.note,
     S && sideDraft !== null && sideDraft !== (S.me.situation || '') ? sideDraft : '']
     .some((v) => typeof v === 'string' && v.trim());
 }

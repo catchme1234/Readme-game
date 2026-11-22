@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { Bot, InlineKeyboard, webhookCallback } from 'grammy';
 import * as S from './store.js';
+import { MANUAL, cleanManual, pressPeace, peaceView } from './manual.js';
 import { LIBRARY, TONES, STAGES, TOPICS, STAGE_Q, FEEL_WORDS, SELF_Q, isHot, safeTone, calmFilter } from './library.js';
 import * as T from './talk.js';
 import { suggestQuestions, aiEnabled } from './ai.js';
@@ -496,7 +497,7 @@ if (bot && USE_WEBHOOK) app.post(`/tg/${HOOK_SECRET}`, webhookCallback(bot, 'exp
 app.get('/health', (req, res) => res.send('ok'));
 
 app.get('/api/config', (req, res) => res.json({
-  demo: DEMO, aiEnabled, tones: TONES, feelWords: FEEL_WORDS, selfQ: SELF_Q, stages: STAGES, topics: TOPICS, voice: Boolean(bot),
+  demo: DEMO, aiEnabled, manual: MANUAL, tones: TONES, feelWords: FEEL_WORDS, selfQ: SELF_Q, stages: STAGES, topics: TOPICS, voice: Boolean(bot),
   signals: Object.fromEntries(Object.entries(G.SIGNALS).filter(([, g]) => !g.hidden).map(([k, g]) => [k, { emoji: g.emoji, label: g.label, time: Boolean(g.time) }])),
   times: G.TIMES, makeup: G.MAKEUP, help: HELP,
 }));
@@ -513,7 +514,7 @@ app.get('/api/state', (req, res) => {
   const me = req.user;
   const pair = me.pairId && S.getPair(me.pairId);
   const base = {
-    me: { id: me.id, name: me.name, tone: me.tone, situation: me.situation, message: me.message || '', makeup: me.makeup ?? null, makeupOwn: me.makeupOwn || '', safety: Boolean(me.safety) },
+    me: { id: me.id, name: me.name, tone: me.tone, situation: me.situation, message: me.message || '', makeup: me.makeup ?? null, makeupOwn: me.makeupOwn || '', safety: Boolean(me.safety), manual: me.manual || {} },
     aiEnabled,
   };
   if (!pair) return res.json({ ...base, pair: null });
@@ -535,7 +536,8 @@ app.get('/api/state', (req, res) => {
     },
     // Партнёр видит только имя и выбранный тон. Его «сторона» не передаётся.
     // Посыл партнёра виден: он написан именно для второго.
-    partner: partner && { name: partner.name, tone: partner.tone, sideFilled: Boolean(partner.situation), message: partner.message || '' },
+    partner: partner && { name: partner.name, tone: partner.tone, sideFilled: Boolean(partner.situation), message: partner.message || '', manual: partner.manual || {} },
+    peace: peaceView(pair, me.id),
     open: open ? publicQ(open, users) : null,
     pendingReply,
     history: answered.map((q) => publicQ(q, users)).reverse(),
@@ -568,11 +570,41 @@ app.post('/api/profile', (req, res) => {
       notify(partnerId, `💌 ${req.user.name} оставил(а) вам посыл перед разговором. Откройте игру, чтобы прочитать.`);
     }
   }
+  if (req.body.manual && typeof req.body.manual === 'object') {
+    const manual = cleanManual(req.body.manual);
+    if (unsafe(req, res, ...Object.values(manual))) return;
+    const pair = req.user.pairId && S.getPair(req.user.pairId);
+    const partnerId = pair && S.partnerOf(pair, req.user.id);
+    if (partnerId && Object.keys(manual).length && !Object.keys(req.user.manual || {}).length) {
+      notify(partnerId, `${req.user.name} написал(а) инструкцию к себе: что помогает в ссоре и как понять, что пора мириться. Загляните в «Мои слова».`);
+    }
+    patch.manual = manual;
+  }
   if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 40);
   if (tone in TONES) patch.tone = tone;
   if (typeof situation === 'string') patch.situation = situation.slice(0, 4000);
   S.updateUser(req.user.id, patch);
   res.json({ ok: true });
+});
+
+// «Тайная кнопка мира»: партнёр не узнаёт о нажатии, пока не нажмёт сам.
+app.post('/api/peace', (req, res) => {
+  const pair = req.user.pairId && S.getPair(req.user.pairId);
+  const partnerId = pair && S.partnerOf(pair, req.user.id);
+  if (!partnerId) return res.status(400).json({ error: 'Сначала пригласите партнёра' });
+  if (req.body.seen) {
+    if (pair.peaceMatch) (pair.peaceMatch.seen ??= {})[req.user.id] = true;
+    S.touch();
+    return res.json({ ok: true });
+  }
+  const matched = pressPeace(pair, req.user.id, Boolean(req.body.on));
+  S.touch();
+  if (matched) {
+    S.track('peace_match');
+    const text = 'Вы оба тайно нажали «Я готов(а) мириться». Самое трудное позади: вы на одной стороне. Откройте игру.';
+    notify(req.user.id, text); notify(partnerId, text);
+  } else if (req.body.on) S.track('peace_press');
+  res.json({ ok: true, matched });
 });
 
 app.post('/api/pair/create', (req, res) => {
