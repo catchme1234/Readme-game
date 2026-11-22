@@ -33,6 +33,7 @@ chmod +x "$DIR/send-post.sh"
 echo "3) Расписание постов (по Москве, 19:00)"
 n=1
 for day in 2026-11-22 2026-11-24 2026-11-26; do
+  if [ "$(TZ=Europe/Moscow date -d "$day 19:00" +%s)" -le "$(date +%s)" ]; then echo "Пост $n уже вышел, пропускаю"; n=$((n+1)); continue; fi
   systemctl stop "readme-post-$n.timer" 2>/dev/null || true
   systemd-run --quiet --unit="readme-post-$n" --on-calendar="$day 19:00:00 Europe/Moscow" "$DIR/send-post.sh" "$n"
   n=$((n+1))
