@@ -9,7 +9,7 @@ BRANCH="claude/project-thread-4m18gy"
 RAW="https://raw.githubusercontent.com/catchme1234/Readme-game/$BRANCH/marketing/telegram"
 DIR=/opt/para-game/channel
 mkdir -p "$DIR"
-for f in avatar.png channel-description.txt post-1.txt post-2.txt post-3.txt; do
+for f in avatar.png channel-description.txt post-1.txt post-2.txt post-3.txt post-1.png post-2.png post-3.png; do
   curl -fsSL "$RAW/$f" -o "$DIR/$f"
 done
 T=$(grep '^BOT_TOKEN=' /opt/para-game/.env | cut -d= -f2- | tr -d "\"'\r")
@@ -26,7 +26,7 @@ curl -sS "$API/setChatDescription" --data-urlencode chat_id="$CHANNEL" --data-ur
 
 cat > "$DIR/send-post.sh" <<SH
 #!/usr/bin/env bash
-curl -s "$API/sendMessage" --data-urlencode chat_id="$CHANNEL" --data-urlencode text@"$DIR/post-\$1.txt" >> "$DIR/log.txt"; echo >> "$DIR/log.txt"
+curl -s --form-string chat_id="$CHANNEL" -F photo=@"$DIR/post-\$1.png" -F caption="<$DIR/post-\$1.txt" "$API/sendPhoto" >> "$DIR/log.txt"; echo >> "$DIR/log.txt"
 SH
 chmod +x "$DIR/send-post.sh"
 
